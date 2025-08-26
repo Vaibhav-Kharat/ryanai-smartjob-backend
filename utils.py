@@ -1,13 +1,19 @@
-import re, json
+import re
+import json
 import io
+from io import BytesIO
+import jwt
 import google.generativeai as genai
-import requests  
-from docx import Document 
+import requests
+import fitz  # PyMuPDF for extracting text from PDF
+from docx import Document
 from pdfminer.high_level import extract_text
 from config import settings
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 genai.configure(api_key=settings.GOOGLE_API_KEY)
+
 
 def extract_job_keywords(description: str):
     prompt = f"""
@@ -33,10 +39,7 @@ def extract_job_keywords(description: str):
         return json.loads(cleaned)
     except:
         return {"skills": [], "experience": ""}
-    
 
-
-from sqlalchemy import text
 
 def process_jobs_for_employer(user_id: str, db: Session):
     # Step 1: Get employer id from EmployerProfile
@@ -77,13 +80,7 @@ def process_jobs_for_employer(user_id: str, db: Session):
     return processed
 
 
-
-
-
-
-
-
-#########################################candidate utils#########################################
+######################################### candidate utils#########################################
 def extract_text_from_resume(resume_url: str) -> str:
     """Download and extract text from resume (PDF or DOCX)."""
     response = requests.get(resume_url, timeout=20)
@@ -128,3 +125,29 @@ def extract_resume_keywords(resume_text: str):
         return json.loads(cleaned)
     except:
         return {"skills": [], "experience": ""}
+
+
+# resume parsing
+
+
+def extract_text_from_pdf(pdf_url: str) -> str:
+    text = ""
+    # Download PDF content
+    response = requests.get(pdf_url)
+    response.raise_for_status()  # raise error if download fails
+    pdf_bytes = BytesIO(response.content)
+
+    # Open PDF from bytes
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    for page in doc:
+        text += page.get_text()
+    return text
+
+
+def decode_jwt(token: str):
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload.get("sub")  # candidate_id stored in `sub`
+    except Exception as e:
+        print("JWT Decode Error:", e)
+        return None

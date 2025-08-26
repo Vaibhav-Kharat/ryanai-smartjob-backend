@@ -1,7 +1,11 @@
-from sqlalchemy import Column, Text, ForeignKey, Integer
+from sqlalchemy import Column, Text, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from db import Base
 from sqlalchemy.orm import relationship
+
+# -------------------
+# Categories
+# -------------------
 
 
 class Category(Base):
@@ -9,12 +13,37 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(Text, nullable=False)
 
+# -------------------
+# Users
+# -------------------
+
+
+class User(Base):
+    __tablename__ = "User"
+    id = Column(Text, primary_key=True, index=True)
+    fullName = Column(Text, nullable=True)
+    image = Column(Text, nullable=True)
+    email = Column(Text, unique=True, index=True)
+    password = Column(Text, nullable=False)
+
+    # optional relationship to CandidateProfile
+    candidate_profile = relationship(
+        "CandidateProfile", back_populates="user", uselist=False)
+
+# -------------------
+# Employers
+# -------------------
+
 
 class EmployerProfile(Base):
     __tablename__ = "EmployerProfile"
     id = Column(Text, primary_key=True, index=True)
     companyName = Column(Text, nullable=False)
     userId = Column(Text, unique=True, nullable=False)
+
+# -------------------
+# Jobs
+# -------------------
 
 
 class Job(Base):
@@ -35,31 +64,24 @@ class Job(Base):
     employer = relationship("EmployerProfile", backref="jobs")
     category = relationship("Category", backref="jobs")
 
+# -------------------
+# Candidate Profiles (for both resume & parsed info)
+# -------------------
+
 
 class CandidateProfile(Base):
     __tablename__ = "CandidateProfile"
+    __table_args__ = {'extend_existing': True}  # avoids InvalidRequestError
 
     id = Column(Integer, primary_key=True, index=True)
     userId = Column(Text, ForeignKey("User.id"), unique=True, nullable=False)
-
-    # fields stored in CandidateProfile
     resumeUrl = Column(Text, nullable=True)
     keywords = Column(JSONB, nullable=True)
     categoryId = Column(Integer, ForeignKey("Category.id"))
-    currentLocation = Column(Text, nullable=True)    # ✅ add
-    totalExperience = Column(Integer, nullable=True)  # ✅ add
-    nationality = Column(Text, nullable=True)        # ✅ add
+    currentLocation = Column(Text, nullable=True)
+    totalExperience = Column(Integer, nullable=True)
+    nationality = Column(Text, nullable=True)
 
-    # relationships
+    # Relationships
     category = relationship("Category", backref="candidates")
-    user = relationship("User", backref="candidate_profile")  # ✅ link to User
-
-
-class User(Base):
-    __tablename__ = "User"
-
-    id = Column(Text, primary_key=True, index=True)
-    fullName = Column(Text, nullable=True)
-    image = Column(Text, nullable=True)
-    email = Column(Text, unique=True, index=True)
-    password = Column(Text, nullable=False)
+    user = relationship("User", back_populates="candidate_profile")

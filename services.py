@@ -1,7 +1,15 @@
+import json
+import re
+import google.generativeai as genai
+import spacy
+
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
 from models import Job, CandidateProfile, EmployerProfile, Category, User
-from utils import extract_job_keywords, extract_text_from_resume, extract_resume_keywords   
+from utils import extract_job_keywords, extract_text_from_resume, extract_resume_keywords
+from config import settings
+
+nlp = spacy.load("en_core_web_sm")
 
 
 def process_single_job(job_id: str, db: Session):
@@ -147,3 +155,53 @@ def recommend_candidates_for_job(job_id: str, employer_user_id: str, db: Session
         "job_id": job.id,
         "recommended_candidates": recommended_candidates,
     }
+
+
+def extract_with_gemini(resume_text: str):
+    prompt = f"""
+    Extract the following fields from the resume:
+    Personal Info:
+    - Full Name
+    - Phone Number
+    - Location
+    - Nationality (based on country)
+
+    Education:
+    - Year of Graduation
+    - Grade
+    - Institute Name
+
+    Work Experience:
+    - Total Experience (in years)
+    - Total Flight Hours
+
+    Additional Details:
+    - Languages Known (comma separated)
+
+    Return JSON in this format:
+    {{
+        "full_name": "...",
+        "phone": "...",
+        "location": "...",
+        "nationality": "...",
+        "graduation_year": "...",
+        "grade": "...",
+        "institute": "...",
+        "total_experience": "...",
+        "total_flight_hours": "...",
+        "languages": "..."
+    }}
+
+    Resume:
+    \"\"\"{resume_text}\"\"\"
+    """
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    raw_text = response.text.strip()
+    cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", raw_text)
+    cleaned = re.sub(r"\n```$", "", cleaned)
+    try:
+        return json.loads(cleaned)
+    except Exception as e:
+        print("Error parsing JSON:", e)
+        return {}
