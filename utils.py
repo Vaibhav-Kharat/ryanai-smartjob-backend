@@ -28,17 +28,43 @@ def extract_job_keywords(description: str):
     }}
 
     Job Description:
-    \"\"\"{description}\"\"\""""
+    \"\"\"{description}\"\"\"
+    """
 
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
 
     cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", response.text.strip())
     cleaned = re.sub(r"\n```$", "", cleaned)
+
     try:
-        return json.loads(cleaned)
+        data = json.loads(cleaned)
+        skills = data.get("skills", [])
+
+        exp = data.get("experience", "").strip()
+        min_exp, max_exp = None, None
+
+        if exp:
+            if "-" in exp:
+                parts = exp.split("-")
+                min_exp = int(parts[0].strip())
+                max_exp = int(parts[1].strip())
+            else:
+                min_exp = max_exp = int(exp)
+
+        experience_dict = {"min_experience": min_exp,
+                           "max_experience": max_exp}
+
+        return {
+            "skills": skills,
+            "experience": experience_dict
+        }
+
     except:
-        return {"skills": [], "experience": ""}
+        return {
+            "skills": [],
+            "experience": {"min_experience": None, "max_experience": None}
+        }
 
 
 def process_jobs_for_employer(user_id: str, db: Session):
@@ -103,12 +129,12 @@ def extract_resume_keywords(resume_text: str):
     prompt = f"""
     From this resume, extract:
     - Skills (comma separated list)
-    - Experience (years or range)
+    - Experience in years (as a single number)
 
     Return JSON:
     {{
       "skills": ["skill1", "skill2"],
-      "experience": "3-5"
+      "experience": "3"
     }}
 
     Resume:
@@ -122,14 +148,27 @@ def extract_resume_keywords(resume_text: str):
     cleaned = re.sub(r"\n```$", "", cleaned)
 
     try:
-        return json.loads(cleaned)
+        data = json.loads(cleaned)
+        skills = data.get("skills", [])
+
+        exp = data.get("experience", "").strip()
+        exp_years = int(exp) if exp.isdigit() else None
+
+        experience_dict = {"years": exp_years}
+
+        return {
+            "skills": skills,
+            "experience": experience_dict
+        }
+
     except:
-        return {"skills": [], "experience": ""}
+        return {
+            "skills": [],
+            "experience": {"years": None}
+        }
 
 
 # resume parsing
-
-
 def extract_text_from_pdf(pdf_url: str) -> str:
     text = ""
     # Download PDF content

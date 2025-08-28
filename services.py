@@ -47,64 +47,121 @@ def process_candidate(candidate_id: int, db: Session):
     return candidate
 
 
+def normalize_skills(skills):
+    if not skills:
+        return set()
+    if isinstance(skills, str):  # candidate case: comma-separated string
+        return set([s.strip() for s in skills.split(",") if s.strip()])
+    if isinstance(skills, list):  # job case
+        return set([s.strip() for s in skills if isinstance(s, str) and s.strip()])
+    return set()
+
+
+def normalize_experience(exp):
+    if not exp:
+        return None
+    if isinstance(exp, str):  # e.g. "2-4"
+        return exp.strip()
+    return str(exp).strip()
+
+
 def recommend_jobs_for_candidate(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
-        CandidateProfile.id == candidate_id).first()
+        CandidateProfile.id == candidate_id
+    ).first()
     if not candidate or not candidate.keywords:
         return []
 
-    candidate_skills = set(candidate.keywords.get("skills", []))
-    candidate_tools = set(candidate.keywords.get("tools", []))
+    # Parse candidate keywords if stored as string
+    candidate_keywords = candidate.keywords
+    if isinstance(candidate_keywords, str):
+        try:
+            candidate_keywords = json.loads(candidate_keywords)
+        except json.JSONDecodeError:
+            candidate_keywords = {}
 
-    # Fetch jobs
-    jobs = (
-        db.query(Job)
-        .options(
-            load_only(
-                Job.id, Job.salaryMin, Job.salaryMax, Job.title, Job.type,
-                Job.location, Job.status, Job.description, Job.vacancies, Job.keywords, Job.categoryId
-            ),
-            joinedload(Job.employer).load_only(EmployerProfile.companyName),
-            joinedload(Job.category).load_only(Category.name)
-        )
-        .all()
-    )
+    # Parse candidate experience if it's a string or None
+    candidate_exp_dict = candidate_keywords.get("experience")
+    if candidate_exp_dict is None:
+        candidate_exp_dict = {}
+    elif isinstance(candidate_exp_dict, str):
+        try:
+            candidate_exp_dict = json.loads(candidate_exp_dict)
+        except json.JSONDecodeError:
+            candidate_exp_dict = {}
 
-    # Separate category vs keyword jobs
-    category_jobs, keyword_jobs = [], []
+    candidate_skills = set(candidate_keywords.get("skills", []))
+    candidate_exp = candidate_exp_dict.get("years") or 0
+
+    jobs = db.query(Job).all()
+    job_matches = []
 
     for job in jobs:
+        # Parse job keywords if stored as string
         job_keywords = job.keywords or {}
-        job_skills = set(job_keywords.get("skills", []))
-        job_tools = set(job_keywords.get("tools", []))
-        match_score = len(candidate_skills.intersection(
-            job_skills)) + len(candidate_tools.intersection(job_tools))
+        if isinstance(job_keywords, str):
+            try:
+                job_keywords = json.loads(job_keywords)
+            except json.JSONDecodeError:
+                job_keywords = {}  # Fallback to empty dict if parsing fails
 
-        job_data = {
+        # Parse job experience if it's a string or None
+        job_exp_dict = job_keywords.get("experience")
+        if job_exp_dict is None:
+            job_exp_dict = {}
+        elif isinstance(job_exp_dict, str):
+            try:
+                job_exp_dict = json.loads(job_exp_dict)
+            except json.JSONDecodeError:
+                job_exp_dict = {}
+
+        job_skills = set(job_keywords.get("skills", []))
+
+        # Safely get experience values with defaults
+        job_min_exp = 0
+        job_max_exp = 0
+
+        if isinstance(job_exp_dict, dict):
+            job_min_exp = job_exp_dict.get("min_experience") or 0
+            job_max_exp = job_exp_dict.get("max_experience") or 0
+
+        # --- Skills match %
+        skill_match_pct = (
+            (len(candidate_skills.intersection(job_skills)) / len(job_skills)) * 100
+            if job_skills else 0
+        )
+
+        # --- Experience match %
+        if job_max_exp == 0:
+            experience_match_pct = 0
+        else:
+            if job_min_exp <= candidate_exp <= job_max_exp:
+                experience_match_pct = 100
+            else:
+                diff = min(abs(candidate_exp - job_min_exp),
+                           abs(candidate_exp - job_max_exp))
+                experience_match_pct = max(0, 100 - diff * 20)
+
+        # --- Aggregate %
+        aggregate_pct = (skill_match_pct + experience_match_pct) / 2
+        job_matches.append({
             "id": job.id,
+            "title": job.title,
+            "location": job.location,
             "salaryMin": job.salaryMin,
             "salaryMax": job.salaryMax,
-            "title": job.title,
-            "type": job.type,
-            "location": job.location,
-            "status": job.status,
-            "description": job.description,
-            "vacancies": job.vacancies,
             "employer": {"companyName": job.employer.companyName if job.employer else None},
             "category": {"name": job.category.name if job.category else None},
-            "match_score": match_score
-        }
+            "skill_match_percentage": round(skill_match_pct),
+            "experience_match_percentage": round(experience_match_pct),
+            "aggregate_match_percentage": round(aggregate_pct)
+        })
 
-        if job.categoryId == candidate.categoryId:
-            category_jobs.append(job_data)
-        else:
-            keyword_jobs.append(job_data)
-
-    category_jobs.sort(key=lambda x: x["match_score"], reverse=True)
-    keyword_jobs.sort(key=lambda x: x["match_score"], reverse=True)
-
-    # Return top 2 category jobs + top 3 keyword jobs
-    return category_jobs[:2] + keyword_jobs[:3]
+    # Sort by aggregate %
+    job_matches.sort(
+        key=lambda x: x["aggregate_match_percentage"], reverse=True)
+    # Return top 5
+    return job_matches[:5]
 
 
 def recommend_candidates_for_job(job_id: str, employer_user_id: str, db: Session):
@@ -165,33 +222,40 @@ def extract_with_gemini(resume_text: str):
     - Phone Number
     - Location
     - Nationality (based on country)
-
-    Education:
-    - Year of Graduation
-    - Grade
+    Education: (for each education entry found)
+    - Qualification (e.g., "B. Tech")
+    - Field of Study (e.g., "CSE")
     - Institute Name
-
+    - Year of Graduation
+    - Grade/Score
+    - Dates (if available)
     Work Experience:
     - Total Experience (in years)
     - Total Flight Hours
-
     Additional Details:
     - Languages Known (comma separated)
-
+    
     Return JSON in this format:
     {{
-        "full_name": "...",
+        "fullName": "...",
         "phone": "...",
-        "location": "...",
+        "currentLocation": "...",
         "nationality": "...",
-        "graduation_year": "...",
-        "grade": "...",
-        "institute": "...",
-        "total_experience": "...",
-        "total_flight_hours": "...",
-        "languages": "..."
+        "education": [
+            {{
+                "qualification": "...",
+                "fieldOfStudy": "...",
+                "instituteName": "...",
+                "yearOfGraduation": "...",
+                "grade": "..."
+            }},
+            ... // more education entries if present
+        ],
+        "totalExperience": "...",
+        "totalFlightHours": "...",
+        "languagesKnown": "..."
     }}
-
+    
     Resume:
     \"\"\"{resume_text}\"\"\"
     """

@@ -53,7 +53,7 @@ def process_candidate_route(payload: dict, db: Session = Depends(get_db)):
 @app.get("/recommend_jobs")
 def recommend_jobs(db: Session = Depends(get_db)):
     # ⚠️ TEMPORARY: Hardcoded candidate_id until frontend passes correct id
-    candidate_id = 3  # <-- static candidate id (change as needed for testing)
+    candidate_id = 14  # <-- static candidate id (change as needed for testing)
 
     results = recommend_jobs_for_candidate(candidate_id, db)
     if not results:
@@ -164,7 +164,7 @@ class RawJobDescription(BaseModel):
 # The prompt is now adjusted to work from a single block of text.
 PROMPT_TEMPLATE = """
 You are an expert HR copywriter for the aviation industry.
-Your task is to take a raw, unstructured job description text and transform it into a professional, well-formatted, and engaging job post.
+Your task is to take a raw, unstructured job description text and transform it into a professional, well-formatted, and engaging job post.  
 
 **Instructions:**
 1.  From the text provided, identify the Job Title, key responsibilities, and required qualifications.
