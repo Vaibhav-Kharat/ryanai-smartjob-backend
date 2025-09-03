@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Text, ForeignKey, Integer, String, DateTime
+from sqlalchemy import Column, Text, ForeignKey, Integer, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from db import Base
 from sqlalchemy.orm import relationship
@@ -61,6 +61,7 @@ class Job(Base):
     location = Column(Text, nullable=True)
     status = Column(Text, nullable=True)
     vacancies = Column(Integer, nullable=True)
+    job_upsell = Column(Boolean, default=False)
 
     employer = relationship("EmployerProfile", backref="jobs")
     category = relationship("Category", backref="jobs")

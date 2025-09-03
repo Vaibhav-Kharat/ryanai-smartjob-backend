@@ -8,7 +8,6 @@ import requests
 import fitz  # PyMuPDF for extracting text from PDF
 from docx import Document
 from pdfminer.high_level import extract_text
-import PyPDF2
 from config import settings
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -152,24 +151,15 @@ def extract_resume_keywords(resume_text: str):
 # resume parsing
 
 def extract_text_from_pdf(pdf_url: str) -> str:
-  """
-  Extracts text from a PDF file.
+    text = ""
+    response = requests.get(pdf_url)
+    response.raise_for_status()
+    pdf_bytes = io.BytesIO(response.content)
 
-  Args:
-    pdf_path: The path to the PDF file.
-
-  Returns:
-    A string containing the extracted text, or None if an error occurred.
-  """
-  text = ""
-  try:
-    with fitz.open(pdf_url) as doc:
-      for page in doc:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    for page in doc:
         text += page.get_text()
-  except Exception as e:
-    print(f"Error extracting text from {pdf_url}: {e}")
-    return None
-  return text
+    return text
 
 
 def decode_jwt(token: str):

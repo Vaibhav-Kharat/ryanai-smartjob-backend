@@ -712,3 +712,255 @@
     "timestamp": "2025-09-03T13:44:13.600384"
   }
 }
+2025-09-03 14:56:54,286 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T14:56:54.286341",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T14:56:54.286313"
+  }
+}
+2025-09-03 14:57:47,488 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T14:57:47.488176",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T14:57:47.488152"
+  }
+}
+2025-09-03 15:29:23,260 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T15:29:23.259941",
+  "endpoint": "enhance_job_description",
+  "request": {
+    "prompt_length": 3458
+  },
+  "response": {
+    "tokens_used": 1329,
+    "prompt_tokens": 737,
+    "candidates_tokens": 592,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T15:29:23.259924"
+  }
+}
+2025-09-03 15:51:15,437 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T15:51:15.437054",
+  "endpoint": "extract_job_keywords",
+  "request": {
+    "prompt_length": 880
+  },
+  "response": {
+    "tokens_used": 306,
+    "prompt_tokens": 188,
+    "candidates_tokens": 118,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T15:51:15.437032"
+  }
+}
+2025-09-03 15:53:03,935 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T15:53:03.935409",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T15:53:03.935394"
+  }
+}
+2025-09-03 15:54:47,837 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T15:54:47.837308",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T15:54:47.837286"
+  }
+}
+2025-09-03 15:55:30,422 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T15:55:30.422140",
+  "endpoint": "extract_job_keywords",
+  "request": {
+    "prompt_length": 880
+  },
+  "response": {
+    "tokens_used": 306,
+    "prompt_tokens": 188,
+    "candidates_tokens": 118,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T15:55:30.422125"
+  }
+}
+2025-09-03 16:08:27,778 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T16:08:27.778619",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T16:08:27.778606"
+  }
+}
+2025-09-03 17:52:38,428 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T17:52:38.428427",
+  "endpoint": "extract_with_gemini",
+  "request": {
+    "prompt_length": 2385
+  },
+  "response": {
+    "tokens_used": 759,
+    "prompt_tokens": 585,
+    "candidates_tokens": 174,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T17:52:38.428391"
+  }
+}
+2025-09-03 18:06:16,283 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:06:16.283831",
+  "endpoint": "extract_with_gemini",
+  "request": {
+    "prompt_length": 2385
+  },
+  "response": {
+    "tokens_used": 760,
+    "prompt_tokens": 585,
+    "candidates_tokens": 175,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:06:16.283814"
+  }
+}
+2025-09-03 18:07:51,102 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:07:51.102743",
+  "endpoint": "extract_with_gemini",
+  "request": {
+    "prompt_length": 2385
+  },
+  "response": {
+    "tokens_used": 760,
+    "prompt_tokens": 585,
+    "candidates_tokens": 175,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:07:51.102727"
+  }
+}
+2025-09-03 18:15:10,633 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:15:10.633053",
+  "endpoint": "extract_with_gemini",
+  "request": {
+    "prompt_length": 2385
+  },
+  "response": {
+    "tokens_used": 759,
+    "prompt_tokens": 585,
+    "candidates_tokens": 174,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:15:10.633034"
+  }
+}
+2025-09-03 18:39:51,061 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:39:51.061449",
+  "endpoint": "enhance_job_description",
+  "request": {
+    "prompt_length": 3486
+  },
+  "response": {
+    "tokens_used": 1258,
+    "prompt_tokens": 741,
+    "candidates_tokens": 517,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:39:51.061433"
+  }
+}
+2025-09-03 18:42:13,356 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:42:13.356714",
+  "endpoint": "enhance_job_description",
+  "request": {
+    "prompt_length": 3486
+  },
+  "response": {
+    "tokens_used": 1251,
+    "prompt_tokens": 741,
+    "candidates_tokens": 510,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:42:13.356703"
+  }
+}
+2025-09-03 18:43:37,481 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:43:37.481091",
+  "endpoint": "extract_with_gemini",
+  "request": {
+    "prompt_length": 2385
+  },
+  "response": {
+    "tokens_used": 760,
+    "prompt_tokens": 585,
+    "candidates_tokens": 175,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:43:37.481075"
+  }
+}
+2025-09-03 18:59:30,422 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T18:59:30.421927",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T18:59:30.421911"
+  }
+}
+2025-09-03 19:04:24,386 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T19:04:24.386921",
+  "endpoint": "extract_resume_keywords",
+  "request": {
+    "prompt_length": 1980
+  },
+  "response": {
+    "tokens_used": 676,
+    "prompt_tokens": 598,
+    "candidates_tokens": 78,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T19:04:24.386907"
+  }
+}
+2025-09-03 19:15:46,340 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-03T19:15:46.340144",
+  "endpoint": "extract_job_keywords",
+  "request": {
+    "prompt_length": 880
+  },
+  "response": {
+    "tokens_used": 306,
+    "prompt_tokens": 188,
+    "candidates_tokens": 118,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-03T19:15:46.340132"
+  }
+}
