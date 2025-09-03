@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class JobBase(BaseModel):
     description: str
@@ -13,6 +13,13 @@ class JobResponse(JobBase):
 
     class Config:
         orm_mode = True
+
+class ProcessCandidateRequest(BaseModel):
+    candidate_id: int
+
+class ProcessCandidateResponse(BaseModel):
+    candidate_id: int
+    keywords: Optional[str]
 
 
 class ResumeParseRequest(BaseModel):

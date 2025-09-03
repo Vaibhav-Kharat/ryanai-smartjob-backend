@@ -1,92 +1,122 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from db import get_db
 from pydantic import BaseModel
 import google.generativeai as genai
-from utils import extract_text_from_pdf, decode_jwt
+from utils import extract_text_from_pdf, decode_jwt, generate_text
 from schemas import ResumeParsedResponse
-from models import CandidateProfile
+from models import CandidateProfile, Education, User
 from services import (
-    process_single_job,
-    process_candidate,
-    recommend_jobs_for_candidate, recommend_candidates_for_job, extract_with_gemini
+    process_job, verify_token, get_current_user,
+    process_candidate, verify_jwt,
+    recommend_jobs, get_recommended_candidates_for_job, resume_parsing, format_value, RawJobDescription, PROMPT_TEMPLATE
 )
+from google.generativeai.types import GenerationConfig
 from config import settings
 import jwt
 import spacy
 import re
+from datetime import datetime
+from logger import gemini_logger  # Import the logger
+
+
+genai.configure(api_key=settings.GOOGLE_API_KEY)
 nlp = spacy.load("en_core_web_sm")
 app = FastAPI()
 security = HTTPBearer()
 
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
 
-@app.post("/process_job")
+
+@app.post("/process-job")
 def process_single_job_route(
-    payload: dict,  # Expecting {"job_id": "..."}
-    db: Session = Depends(get_db)
+    payload: dict = None,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
-    job_id = payload.get("sub")
-    if not job_id:
-        raise HTTPException(status_code=400, detail="job_id is required")
+    # ✅ Try extracting job_id from JWT
+    decoded = verify_token(authorization) if authorization else None
+    job_id = decoded.get("sub") if decoded else None
 
-    job = process_single_job(job_id, db)
+    # ✅ If not in JWT, fallback to request body
+    if not job_id and payload:
+        job_id = payload.get("sub") or payload.get("job_id")
+
+    if not job_id:
+        raise HTTPException(
+            status_code=400, detail="job_id is required (via JWT or body)")
+
+    job = process_job(job_id, db)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     return {"job_id": job.id, "keywords": job.keywords}
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
 
 
-@app.post("/process_candidate")
-def process_candidate_route(payload: dict, db: Session = Depends(get_db)):
-    candidate_id = payload.get("candidate_id")
+@app.post("/process-candidate")
+def process_candidate_route(
+    payload: dict = None,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
+):
+    candidate_id = None
+
+    # 1️⃣ Try extracting candidate_id from JWT
+    decoded = verify_token(authorization) if authorization else None
+    if decoded:
+        candidate_id = decoded.get("sub")
+
+    # 2️⃣ If not in JWT, fallback to request body
+    if not candidate_id and payload:
+        candidate_id = payload.get("sub") or payload.get("candidate_id")
+
+    # 3️⃣ If still not found → error
     if not candidate_id:
-        raise HTTPException(status_code=400, detail="candidate_id is required")
+        raise HTTPException(
+            status_code=400, detail="candidate_id is required (via JWT or body)")
 
+    # 4️⃣ Process candidate
     candidate = process_candidate(int(candidate_id), db)
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    return {"candidate_id": candidate.id, "keywords": candidate.keywords}
+    return {
+        "candidate_id": candidate.id,
+        "keywords": candidate.keywords
+    }
 
 
-@app.get("/recommend_jobs")
-def recommend_jobs(db: Session = Depends(get_db)):
-    # ⚠️ TEMPORARY: Hardcoded candidate_id until frontend passes correct id
-    candidate_id = 14  # <-- static candidate id (change as needed for testing)
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+@app.get("/recommend-jobs")
+def recommend_jobs_endpoint(
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user)  # <-- JWT-protected
+):
+    # Use current_user_id instead of hardcoding candidate_id
+    candidate_id = current_user_id
 
-    results = recommend_jobs_for_candidate(candidate_id, db)
+    results = recommend_jobs(candidate_id, db)
     if not results:
         raise HTTPException(status_code=404, detail="No recommendations found")
 
     return {"candidate_id": candidate_id, "recommended_jobs": results}
 
-
-# When JWT is Ready (future version)
-
-# @app.get("/recommend_jobs")
-# def recommend_jobs(request: Request, db: Session = Depends(get_db)):
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         raise HTTPException(status_code=401, detail="Missing or invalid token")
-
-#     token = auth_header.split(" ")[1]
-#     try:
-#         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-#         user_id = payload.get("sub")   # ⚠️ right now this is userId, not candidateId
-#     except jwt.InvalidTokenError:
-#         raise HTTPException(status_code=401, detail="Invalid token")
-
-#     # Later: map userId → candidateId via CandidateProfile.userId
-#     candidate = db.query(CandidateProfile).filter(CandidateProfile.userId == user_id).first()
-#     if not candidate:
-#         raise HTTPException(status_code=404, detail="Candidate not found")
-
-#     return {"candidate_id": candidate.id, "recommended_jobs": recommend_jobs_for_candidate(candidate.id, db)}
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# here the job id will come through the jwt token
 
 
-@app.get("/recommend_candidates/{job_id}")
-def recommend_candidates(job_id: str, request: Request, db: Session = Depends(get_db)):
+@app.get("/recommend-candidates")
+def recommend_candidates_endpoint(request: Request, db: Session = Depends(get_db)):
     # 1️⃣ Extract JWT token
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -94,120 +124,151 @@ def recommend_candidates(job_id: str, request: Request, db: Session = Depends(ge
 
     token = auth_header.split(" ")[1]
 
-    # 2️⃣ Decode JWT to get employer user ID
+    # 2️⃣ Decode JWT to get job_id
     try:
         payload = jwt.decode(token, settings.SECRET_KEY,
                              algorithms=[settings.ALGORITHM])
-        employer_user_id = payload.get("sub")  # string ID from JWT
+        job_id = payload.get("job_id")
+        if not job_id:
+            raise HTTPException(
+                status_code=400, detail="Job ID missing in token")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    # 3️⃣ Get recommended candidates
-    recommended = recommend_candidates_for_job(job_id, employer_user_id, db)
+    # 3️⃣ Fetch recommended candidates
+    recommended = get_recommended_candidates_for_job(job_id, db)
     if not recommended:
         raise HTTPException(status_code=404, detail="No candidates found")
 
     return {"job_id": job_id, "recommended_candidates": recommended}
 
 
-# When JWT is Ready (future version)
-# @app.get("/parse_resume", response_model=ResumeParsedResponse)
-# def parse_resume(request: Request, db: Session = Depends(get_db)):
-#     # 1. Get token from header
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         raise HTTPException(status_code=401, detail="Missing or invalid token")
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------------------------#
+# here get api will be there
+@app.get("/parse-resume")
+def parse_resume_test(request: Request, db: Session = Depends(get_db)):
+    # 1️⃣ Extract JWT token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
 
-#     token = auth_header.split(" ")[1]
+    token = auth_header.split(" ")[1]
 
-#     # 2. Decode JWT to get candidate_id
-#     candidate_id = decode_jwt(token)
-#     if not candidate_id:
-#         raise HTTPException(status_code=401, detail="Invalid token")
+    # 2️⃣ Decode JWT to get candidate_id
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY,
+                             algorithms=[settings.ALGORITHM])
+        candidate_id = payload.get("candidate_id")
+        if not candidate_id:
+            raise HTTPException(
+                status_code=400, detail="Candidate ID missing in token")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-#     # 3. Fetch candidate profile (to get resumeUrl)
-#     candidate = db.query(CandidateProfiles).filter(
-#         CandidateProfiles.userId == candidate_id).first()
-#     if not candidate or not candidate.resumeUrl:
-#         raise HTTPException(
-#             status_code=404, detail="Candidate or Resume not found")
-
-#     # 4. Extract text from resume PDF
-#     resume_text = extract_text_from_pdf(candidate.resumeUrl)
-
-#     # 5. Parse with Gemini
-#     parsed_data = extract_with_gemini(resume_text)
-
-#     # 6. Just return parsed data (NO DB update)
-#     return parsed_data
-
-
-@app.get("/parse_resume_test/{candidate_id}")
-def parse_resume_test(candidate_id: int, db: Session = Depends(get_db)):
+    # --- Fetch candidate ---
     candidate = db.query(CandidateProfile).filter(
-        CandidateProfile.id == str(candidate_id)).first()
+        CandidateProfile.id == candidate_id).first()
     if not candidate or not candidate.resumeUrl:
         raise HTTPException(
             status_code=404, detail="Candidate or Resume not found")
 
+    # --- Extract and parse resume ---
     resume_text = extract_text_from_pdf(candidate.resumeUrl)
-    parsed_data = extract_with_gemini(resume_text)
-    return parsed_data
+    parsed_data = resume_parsing(resume_text)
+    if not parsed_data:
+        raise HTTPException(status_code=500, detail="Failed to parse resume")
+
+    # --- Save personal details ---
+    personal = parsed_data.get("personalDetails", {})
+    user = db.query(User).filter(User.id == candidate.userId).first()
+    if user:
+        user.fullName = format_value(personal.get("fullName"))
+
+    candidate.phone = format_value(personal.get("phone"))
+    candidate.currentLocation = format_value(personal.get("currentLocation"))
+    candidate.nationality = format_value(personal.get("nationality"))
+
+    # --- Improved language parsing ---
+    languages_raw = parsed_data.get("languages", "")
+    languages_clean = []
+
+    if languages_raw:
+        # Remove braces, quotes, or any weird characters
+        cleaned = re.sub(r"[{}\[\]\"]", "", languages_raw)
+        # Split by commas, strip spaces, ignore empty entries
+        languages_clean = [lang.strip()
+                           for lang in cleaned.split(",") if lang.strip()]
+
+    # Default to ["N/A"] if nothing found
+    candidate.languagesKnown = languages_clean if languages_clean else ["N/A"]
+
+    # --- Save education ---
+    db.query(Education).filter(
+        Education.candidateProfileId == candidate.id).delete()
+    education_saved = []
+    for edu in parsed_data.get("education", []):
+        education_entry = Education(
+            candidateProfileId=candidate.id,
+            qualification=format_value(edu.get("qualification")),
+            fieldOfStudy=format_value(edu.get("fieldOfStudy")),
+            instituteName=format_value(edu.get("instituteName")),
+            yearOfGraduation=None,
+            grade=None,
+            updatedAt=datetime.utcnow(),
+            createdAt=datetime.utcnow()
+        )
+        db.add(education_entry)
+        education_saved.append({
+            "qualification": education_entry.qualification,
+            "fieldOfStudy": education_entry.fieldOfStudy,
+            "instituteName": education_entry.instituteName
+        })
+
+    db.commit()
+
+    # --- Return parsed and saved data ---
+    return {
+        "message": "Resume parsed and data saved successfully",
+        "saved_data": {
+            "fullName": user.fullName if user else None,
+            "phone": candidate.phone,
+            "currentLocation": candidate.currentLocation,
+            "nationality": candidate.nationality,
+            "languagesKnown": candidate.languagesKnown,
+            "education": education_saved
+        }
+    }
 
 
-# jd
-class RawJobDescription(BaseModel):
-    raw_text: str
-
-
-# --- Updated Prompt Template ---
-# The prompt is now adjusted to work from a single block of text.
-PROMPT_TEMPLATE = """
-You are an expert HR copywriter for the aviation industry.
-Your task is to take a raw, unstructured job description text and transform it into a professional, well-formatted, and engaging job post.  
-
-**Instructions:**
-1.  From the text provided, identify the Job Title, key responsibilities, and required qualifications.
-2.  Structure the output with clear headings like 'Position Summary', 'Key Responsibilities', and 'Required Qualifications'.
-3.  Rewrite the content in a professional and compelling tone to attract qualified candidates.
-4.  Format the responsibilities and qualifications as bullet points.
-5.  Ensure the final output is in clean Markdown format.
-
-**Raw Text to Process:**
----
-{raw_text}
----
-"""
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-
-@app.post("/api/enhance-jd")
-async def enhance_job_description(jd_input: RawJobDescription):
-    """
-    Receives a raw block of text for a job description and enhances it using AI.
-    """
-    if model is None:
-        raise HTTPException(
-            status_code=500, detail="AI model not configured correctly.")
-
-    if not jd_input.raw_text or len(jd_input.raw_text.strip()) < 20:
-        raise HTTPException(
-            status_code=400, detail="Input text is too short to process.")
-
-    # Construct the full prompt
-    full_prompt = PROMPT_TEMPLATE.format(raw_text=jd_input.raw_text)
-
-    # Call the Gemini API
+@app.get("/enhance-jd")
+async def enhance_job_description(raw_text: str = Depends(verify_jwt)):
+    if not raw_text or len(raw_text.strip()) < 20:
+        raise HTTPException(status_code=400, detail="Input text too short")
+    full_prompt = PROMPT_TEMPLATE.format(raw_text=raw_text)
     try:
-        response = model.generate_content(full_prompt)
+        model_instance = genai.GenerativeModel("gemini-1.5-flash")
+        response = model_instance.generate_content(
+            full_prompt,
+            generation_config=GenerationConfig()
+        )
+
+        # Extract usage metadata using the helper method
+        usage_metadata = gemini_logger.extract_usage_metadata(response)
+
+        # ✅ Log API call with tokens
+        gemini_logger.log_api_call(
+            endpoint="enhance_job_description",
+            request_data={"prompt_length": len(full_prompt)},
+            response_data={
+                "usage_metadata": usage_metadata,
+                "model": "gemini-1.5-flash",
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
         enhanced_jd = response.text
     except Exception as e:
-        print(f"An error occurred with the Gemini API: {e}")
-        raise HTTPException(
-            status_code=503, detail="AI service failed to process the request.")
-
-    # Send the successful response
-    return {
-        "status": "success",
-        "enhancedJobDescription": enhanced_jd
-    }
+        raise HTTPException(status_code=503, detail=f"AI service failed: {e}")
+    return {"status": "success", "enhancedJobDescription": enhanced_jd}
