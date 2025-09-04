@@ -179,7 +179,7 @@ def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_
     Candidate has {candidate_exp} years of experience and skills: {list(candidate_skills)}.
     The job requires {job_min_exp}-{job_max_exp} years of experience and skills: {list(job_skills)}.
 
-    Write a short explanation (2 sentences max) on why this job is a good match for the candidate.
+    Write a short explanation (26-28 words max) on why this job is a good match for the candidate.
     """
 
     try:
