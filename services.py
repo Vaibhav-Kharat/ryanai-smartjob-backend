@@ -131,6 +131,12 @@ def normalize_experience(exp):
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
+def safe_int(value, default=0):
+    """Safely convert to int, return default if conversion fails."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
         CandidateProfile.id == candidate_id
@@ -146,17 +152,15 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         except json.JSONDecodeError:
             candidate_keywords = {}
 
-    candidate_exp_dict = candidate_keywords.get("experience")
-    if candidate_exp_dict is None:
-        candidate_exp_dict = {}
-    elif isinstance(candidate_exp_dict, str):
+    candidate_exp_dict = candidate_keywords.get("experience") or {}
+    if isinstance(candidate_exp_dict, str):
         try:
             candidate_exp_dict = json.loads(candidate_exp_dict)
         except json.JSONDecodeError:
             candidate_exp_dict = {}
 
     candidate_skills = set(candidate_keywords.get("skills", []))
-    candidate_exp = candidate_exp_dict.get("years") or 0
+    candidate_exp = safe_int(candidate_exp_dict.get("years"))
 
     jobs = db.query(Job).all()
     job_matches = []
@@ -169,32 +173,34 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             except json.JSONDecodeError:
                 job_keywords = {}
 
-        job_exp_dict = job_keywords.get("experience")
-        if job_exp_dict is None:
-            job_exp_dict = {}
-        elif isinstance(job_exp_dict, str):
+        job_exp_dict = job_keywords.get("experience") or {}
+        if isinstance(job_exp_dict, str):
             try:
                 job_exp_dict = json.loads(job_exp_dict)
             except json.JSONDecodeError:
                 job_exp_dict = {}
 
         job_skills = set(job_keywords.get("skills", []))
-        job_min_exp = job_exp_dict.get("min_experience") or 0
-        job_max_exp = job_exp_dict.get("max_experience") or 0
+        job_min_exp = safe_int(job_exp_dict.get("min_experience"))
+        job_max_exp = safe_int(job_exp_dict.get("max_experience"))
 
+        # --- Skill Match ---
         skill_match_pct = (
             (len(candidate_skills.intersection(job_skills)) / len(job_skills)) * 100
             if job_skills else 0
         )
 
-        if job_max_exp == 0:
+        # --- Experience Match ---
+        if job_max_exp == 0:  # no exp specified
             experience_match_pct = 0
         else:
             if job_min_exp <= candidate_exp <= job_max_exp:
                 experience_match_pct = 100
             else:
-                diff = min(abs(candidate_exp - job_min_exp),
-                           abs(candidate_exp - job_max_exp))
+                diff = min(
+                    abs(candidate_exp - job_min_exp),
+                    abs(candidate_exp - job_max_exp)
+                )
                 experience_match_pct = max(0, 100 - diff * 20)
 
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
@@ -214,10 +220,10 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "experience_match_percentage": round(experience_match_pct),
             "aggregate_match_percentage": round(aggregate_pct),
             "match_reason": reason,
-            "job_upsell": job.job_upsell  # Add upsell flag for sorting
+            "job_upsell": job.job_upsell,  # Add upsell flag for sorting
         })
 
-    # Sort by upsell first, then aggregate % (upsell=True first)
+    # Sort by upsell first, then aggregate %
     job_matches.sort(
         key=lambda x: (not x["job_upsell"], -x["aggregate_match_percentage"])
     )
