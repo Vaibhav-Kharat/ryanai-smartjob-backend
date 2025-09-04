@@ -91,85 +91,85 @@ def extract_job_keywords(description: str):
 
 
 ######################################### candidate utils#########################################
-def extract_text_from_resume(resume_url: str) -> str:
-    response = requests.get(resume_url, timeout=20)
-    if response.status_code != 200:
-        raise Exception("Could not download resume")
+# def extract_text_from_resume(resume_url: str) -> str:
+#     response = requests.get(resume_url, timeout=20)
+#     if response.status_code != 200:
+#         raise Exception("Could not download resume")
 
-    ext = resume_url.split(".")[-1].lower()
-    content = response.content
+#     ext = resume_url.split(".")[-1].lower()
+#     content = response.content
 
-    if ext == "pdf":
-        return extract_text(io.BytesIO(content))
-    elif ext == "docx":
-        doc = Document(io.BytesIO(content))
-        return "\n".join([p.text for p in doc.paragraphs])
-    else:
-        raise Exception("Unsupported file format")
+#     if ext == "pdf":
+#         return extract_text(io.BytesIO(content))
+#     elif ext == "docx":
+#         doc = Document(io.BytesIO(content))
+#         return "\n".join([p.text for p in doc.paragraphs])
+#     else:
+#         raise Exception("Unsupported file format")
 
 
-def extract_resume_keywords(resume_text: str):
-    prompt = f"""
-    From this resume, extract:
-    - Skills
-    - Experience in years
+# def extract_resume_keywords(resume_text: str):
+#     prompt = f"""
+#     From this resume, extract:
+#     - Skills
+#     - Experience in years
     
-    Return JSON.
-    Resume:
-    \"\"\"{resume_text}\"\"\""""
-    model_instance = genai.GenerativeModel("gemini-1.5-flash")
-    response = model_instance.generate_content(
-        prompt,
-        generation_config=GenerationConfig()
-    )
+#     Return JSON.
+#     Resume:
+#     \"\"\"{resume_text}\"\"\""""
+#     model_instance = genai.GenerativeModel("gemini-1.5-flash")
+#     response = model_instance.generate_content(
+#         prompt,
+#         generation_config=GenerationConfig()
+#     )
 
-    # Extract usage metadata using the helper method
-    usage_metadata = gemini_logger.extract_usage_metadata(response)
+#     # Extract usage metadata using the helper method
+#     usage_metadata = gemini_logger.extract_usage_metadata(response)
 
-    gemini_logger.log_api_call(
-        endpoint="extract_resume_keywords",
-        request_data={"prompt_length": len(prompt)},
-        response_data={
-            "usage_metadata": usage_metadata,
-            "model": "gemini-1.5-flash",
-            "timestamp": datetime.now().isoformat()
-        }
-    )
+#     gemini_logger.log_api_call(
+#         endpoint="extract_resume_keywords",
+#         request_data={"prompt_length": len(prompt)},
+#         response_data={
+#             "usage_metadata": usage_metadata,
+#             "model": "gemini-1.5-flash",
+#             "timestamp": datetime.now().isoformat()
+#         }
+#     )
 
-    cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", response.text.strip())
-    cleaned = re.sub(r"\n```$", "", cleaned)
-    try:
-        data = json.loads(cleaned)
-        return {
-            "skills": data.get("skills", []),
-            "experience": {"years": data.get("experience")}
-        }
-    except:
-        return {"skills": [], "experience": {"years": None}}
-
-
-# resume parsing
-
-def extract_text_from_pdf(pdf_url: str) -> str:
-    text = ""
-    response = requests.get(pdf_url)
-    response.raise_for_status()
-    pdf_bytes = io.BytesIO(response.content)
-
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    for page in doc:
-        text += page.get_text()
-    return text
+#     cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", response.text.strip())
+#     cleaned = re.sub(r"\n```$", "", cleaned)
+#     try:
+#         data = json.loads(cleaned)
+#         return {
+#             "skills": data.get("skills", []),
+#             "experience": {"years": data.get("experience")}
+#         }
+#     except:
+#         return {"skills": [], "experience": {"years": None}}
 
 
-def decode_jwt(token: str):
-    import jwt
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        return payload.get("sub")
-    except Exception as e:
-        print("JWT Decode Error:", e)
-        return None
+# # resume parsing
+
+# def extract_text_from_pdf(pdf_url: str) -> str:
+#     text = ""
+#     response = requests.get(pdf_url)
+#     response.raise_for_status()
+#     pdf_bytes = io.BytesIO(response.content)
+
+#     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+#     for page in doc:
+#         text += page.get_text()
+#     return text
+
+
+# def decode_jwt(token: str):
+#     import jwt
+#     try:
+#         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+#         return payload.get("sub")
+#     except Exception as e:
+#         print("JWT Decode Error:", e)
+#         return None
 
 # this below is the function for why thsis job is a good match for the candidate it is implemented in recommedate job for candidate in services.py
 

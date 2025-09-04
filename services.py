@@ -1,6 +1,9 @@
 import json
 import re
 import os
+import io
+import requests
+import fitz  # PyMuPDF
 
 import traceback
 import google.generativeai as genai
@@ -10,7 +13,7 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
 from models import Job, CandidateProfile, EmployerProfile, Category, User
-from utils import extract_job_keywords, extract_text_from_resume, extract_resume_keywords, generate_match_reason
+from utils import extract_job_keywords, generate_match_reason
 from config import settings
 from datetime import datetime
 from logger import gemini_logger  # Import the logger
@@ -19,15 +22,17 @@ from google.generativeai.types import GenerationConfig
 from dotenv import load_dotenv
 from typing import Optional
 from rapidfuzz import fuzz
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 nlp = spacy.load("en_core_web_sm")
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 load_dotenv()  # Load .env variables
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 def process_job(job_id: str, db: Session):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -41,7 +46,6 @@ def process_job(job_id: str, db: Session):
     db.refresh(job)
 
     return job
-
 
 def decode_jwt_token_job(token: str):
     if not token:
@@ -63,28 +67,32 @@ def decode_jwt_token_job(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 
 
-def process_candidate(candidate_id: int, db: Session):
-    candidate = db.query(CandidateProfile).filter(
-        CandidateProfile.id == candidate_id).first()
-    if not candidate:
-        return None
+# def process_candidate(candidate_id: int, db: Session):
+#     candidate = db.query(CandidateProfile).filter(
+#         CandidateProfile.id == candidate_id).first()
+#     if not candidate:
+#         return None
 
-    # 1. Extract text from resume
-    resume_text = extract_text_from_resume(candidate.resumeUrl)
+#     # 1. Extract text from resume
+#     resume_text = extract_text_from_resume(candidate.resumeUrl)
 
-    # 2. Extract skills/experience using Gemini
-    extracted = extract_resume_keywords(resume_text)
+#     # 2. Extract skills/experience using Gemini
+#     extracted = extract_resume_keywords(resume_text)
 
-    # 3. Save in DB
-    candidate.keywords = extracted
-    db.commit()
-    db.refresh(candidate)
+#     # 3. Save in DB
+#     candidate.keywords = extracted
+#     db.commit()
+#     db.refresh(candidate)
 
-    return candidate
-
-
+#     return candidate
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 def get_candidate_id_from_token(authorization: str = Header(...)):
     """
     Extract candidate_id from JWT token in Authorization header
@@ -105,7 +113,6 @@ def get_candidate_id_from_token(authorization: str = Header(...)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-
 def normalize_skills(skills):
     if not skills:
         return set()
@@ -115,15 +122,15 @@ def normalize_skills(skills):
         return set([s.strip() for s in skills if isinstance(s, str) and s.strip()])
     return set()
 
-
 def normalize_experience(exp):
     if not exp:
         return None
     if isinstance(exp, str):  # e.g. "2-4"
         return exp.strip()
     return str(exp).strip()
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
         CandidateProfile.id == candidate_id
@@ -216,8 +223,9 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
     )
 
     return job_matches[:5]
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 def decode_jwt_token_recommed_candidate(token: str):
     if token.startswith("Bearer "):
         token = token.split(" ")[1].strip()
@@ -228,11 +236,7 @@ def decode_jwt_token_recommed_candidate(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
-
 # down logic is for recommend candidates
-
-
 def recommend_candidates_logic(job_id: str, employer_user_id: str, db: Session):
     # 1️⃣ Verify employer
     employer = db.query(EmployerProfile).filter(
@@ -323,12 +327,46 @@ def recommend_candidates_logic(job_id: str, employer_user_id: str, db: Session):
     # 4️⃣ Sort by aggregate match %
     recommended.sort(key=lambda x: x["aggregate_match_percentage"], reverse=True)
     return recommended[:5]
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 
 
 
-def resume_parsing(resume_text: str):
+def decode_jwt_token(authorization: str):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid auth header")
+
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        candidate_id = payload.get("profileId")
+        if not candidate_id:
+            raise HTTPException(status_code=401, detail="candidate_id missing in token")
+        return candidate_id
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# --- Resume Text Extractor ---
+def extract_text_from_pdf(pdf_url: str) -> str:
+    text = ""
+    response = requests.get(pdf_url, timeout=20)
+    response.raise_for_status()
+    pdf_bytes = io.BytesIO(response.content)
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    for page in doc:
+        text += page.get_text()
+    return text
+
+
+# --- Unified Gemini Parser ---
+def unified_resume_parser(resume_text: str):
     prompt = f"""
-    Extract resume details and return JSON in this format only:
+    Extract all structured details from this resume and return JSON strictly in this format:
 
     {{
         "personalDetails": {{
@@ -344,16 +382,23 @@ def resume_parsing(resume_text: str):
                 "instituteName": "string"
             }}
         ],
-        "languages": "{{English,Hindi,Marathi}}"
+        "languages": "{{English,Hindi,Marathi}}",
+        "skills": ["string"],
+        "experience": {{
+            "years": "string"
+        }}
     }}
 
     Rules:
-    - Remove work experience completely
-    - In education, only map Degree → qualification, Major → fieldOfStudy, University → instituteName
-    - Languages must be text format like {{English,Hindi,Marathi}}, no levels
+    - Do not include work experience descriptions, only extract "years".
+    - For education: Degree → qualification, Major → fieldOfStudy, University → instituteName.
+    - Languages must be plain text like {{English,Hindi,Marathi}}, no proficiency levels.
+    - Skills must be a clean list of technical & professional keywords.
+    - Strictly return valid JSON (no markdown, no explanations).
 
     Resume:
-    \"\"\"{resume_text}\"\"\""""
+    \"\"\"{resume_text}\"\"\"
+    """
 
     model_instance = genai.GenerativeModel("gemini-1.5-flash")
     response = model_instance.generate_content(
@@ -361,16 +406,10 @@ def resume_parsing(resume_text: str):
         generation_config=GenerationConfig()
     )
 
-    # Print the full response for debugging
-    print("Full response structure:", response)
-
-    # Extract usage metadata using the helper method
+    # Log Gemini usage
     usage_metadata = gemini_logger.extract_usage_metadata(response)
-    print("Extracted usage metadata:", usage_metadata)
-
-    # ✅ Log API call with correct usage metadata
     gemini_logger.log_api_call(
-        endpoint="extract_with_gemini",
+        endpoint="unified_resume_parser",
         request_data={"prompt_length": len(prompt)},
         response_data={
             "usage_metadata": usage_metadata,
@@ -382,64 +421,21 @@ def resume_parsing(resume_text: str):
     raw_text = response.text.strip()
     cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", raw_text)
     cleaned = re.sub(r"\n```$", "", cleaned)
+
     try:
-        return json.loads(cleaned)   # now Gemini output matches final schema
+        return json.loads(cleaned)
     except Exception as e:
         print("Error parsing JSON:", e, "Raw:", cleaned)
         return {}
 
 
-# this function i sfor resume parsing when the output value is null we can return N/A
+# --- Format Helper ---
+def format_value(val):
+    return val if val and str(val).strip().lower() != "null" else None
 
-def format_value(value):
-    return value if value is not None else "N/A"
-
-
-def decode_jwt_token(token: str):
-    """
-    Decode JWT token and extract candidate_id.
-    Automatically strips 'Bearer ' if present.
-    Logs detailed error information with stack trace.
-    """
-    # Remove Bearer prefix if present
-    if token.startswith("Bearer "):
-        token = token.split(" ")[1].strip()
-
-    try:
-        print("Decoding token:", token)
-        print("Using secret key:", SECRET_KEY)
-        print("Algorithm:", ALGORITHM)
-
-        # Decode the token using loaded secret
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print("Decoded JWT Payload:", payload)
-
-        candidate_id = payload.get("profileId")
-        if candidate_id is None:
-            raise HTTPException(
-                status_code=401, detail="Invalid token: candidate_id missing"
-            )
-
-        return candidate_id
-
-    except ExpiredSignatureError as e:
-        print("JWT ExpiredSignatureError:", str(e))
-        traceback.print_exc()
-        raise HTTPException(status_code=401, detail="Token has expired")
-
-    except JWTError as e:
-        print("JWTError:", str(e))
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=401, detail="Invalid or malformed token")
-
-    except Exception as e:
-        print("Unexpected error decoding JWT:", str(e))
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500, detail="Internal server error during token decoding")
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 # this is for jd api jwt authentication
 def verify_jwt(authorization: Optional[str] = Header(None)):
     if not authorization:
@@ -463,3 +459,6 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Token missing profileId")
 
     return profile_id
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#

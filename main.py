@@ -4,13 +4,12 @@ from sqlalchemy.orm import Session
 from db import get_db
 from pydantic import BaseModel
 import google.generativeai as genai
-from utils import extract_text_from_pdf, decode_jwt, generate_text
+# from utils import extract_text_from_pdf, decode_jwt, generate_text
 from schemas import ResumeParsedResponse
 from models import CandidateProfile, Education, User, EmployerProfile, Job, Category
 from services import (
     process_job,
-    process_candidate,
-    recommend_jobs_logic, resume_parsing, format_value, decode_jwt_token, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_candidate, recommend_candidates_logic
+    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_candidate, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -24,6 +23,9 @@ from datetime import datetime
 from logger import gemini_logger  # Import the logger
 
 
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 nlp = spacy.load("en_core_web_sm")
 app = FastAPI()
@@ -31,8 +33,9 @@ security = HTTPBearer()
 load_dotenv()  # Load .env variables
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 @app.get("/process-job/{job_id}")
 def process_single_job_route(
     job_id: str,                                # 👈 from URL path
@@ -51,20 +54,24 @@ def process_single_job_route(
         raise HTTPException(status_code=404, detail="Job not found")
 
     return {"job_id": job.id, "keywords": job.keywords}
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 
 
-@app.get("/process-candidate")
-def process_candidate_route(
-    candidate_id: int = Depends(get_candidate_id_from_token),
-    db: Session = Depends(get_db)
-):
-    candidate = process_candidate(int(candidate_id), db)
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
+# @app.get("/process-candidate")
+# def process_candidate_route(
+#     candidate_id: int = Depends(get_candidate_id_from_token),
+#     db: Session = Depends(get_db)
+# ):
+#     candidate = process_candidate(int(candidate_id), db)
+#     if not candidate:
+#         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    return {"candidate_id": candidate.id, "keywords": candidate.keywords}
-
-
+#     return {"candidate_id": candidate.id, "keywords": candidate.keywords}
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 @app.get("/recommended-jobs")
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
     # Decode token and extract candidate_id
@@ -79,8 +86,9 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
         raise HTTPException(status_code=404, detail="No recommendations found")
 
     return {"candidate_id": candidate_id, "recommended_jobs": results}
-
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 @app.get("/recommended-candidates")
 def recommend_candidates(request: Request, db: Session = Depends(get_db)):
     # 1️⃣ Extract JWT token from header
@@ -112,10 +120,12 @@ def recommend_candidates(request: Request, db: Session = Depends(get_db)):
             status_code=404, detail="No eligible candidates found")
 
     return {"job_id": job_id, "recommended_candidates": recommended_candidates}
-
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 
 @app.get("/parse-resume")
-def parse_resume_test(
+def process_resume(
     db: Session = Depends(get_db),
     authorization: str = Header(...)
 ):
@@ -128,14 +138,13 @@ def parse_resume_test(
     ).first()
 
     if not candidate or not candidate.resumeUrl:
-        raise HTTPException(
-            status_code=404, detail="Candidate or Resume not found")
+        raise HTTPException(status_code=404, detail="Candidate or Resume not found")
 
     # --- Extract resume text ---
     resume_text = extract_text_from_pdf(candidate.resumeUrl)
 
-    # --- Parse resume ---
-    parsed_data = resume_parsing(resume_text)
+    # --- Parse everything with one Gemini call ---
+    parsed_data = unified_resume_parser(resume_text)
     if not parsed_data:
         raise HTTPException(status_code=500, detail="Failed to parse resume")
 
@@ -156,27 +165,41 @@ def parse_resume_test(
     )
 
     # --- Save education ---
-    db.query(Education).filter(
-        Education.candidateProfileId == candidate.id
-    ).delete()
-
+    db.query(Education).filter(Education.candidateProfileId == candidate.id).delete()
     for edu in parsed_data.get("education", []):
         education_entry = Education(
-            candidateProfileId=candidate.id,
-            qualification=format_value(edu.get("qualification")),
-            fieldOfStudy=format_value(edu.get("fieldOfStudy")),
-            instituteName=format_value(edu.get("instituteName")),
-            yearOfGraduation=None,
-            grade=None,
-            updatedAt=datetime.utcnow(),
-            createdAt=datetime.utcnow()
+        candidateProfileId=candidate.id,
+        qualification=format_value(edu.get("qualification") or "N/A"),
+        fieldOfStudy=format_value(edu.get("fieldOfStudy") or "N/A"),
+        instituteName=format_value(edu.get("instituteName") or "N/A"),
+        yearOfGraduation=None,
+        grade="N/A",
+        updatedAt=datetime.utcnow(),
+        createdAt=datetime.utcnow()
         )
         db.add(education_entry)
 
+    # --- Save skills + experience inside keywords ---
+    candidate.keywords = {
+        "skills": parsed_data.get("skills", []),
+        "experience": {"years": parsed_data.get("experience", {}).get("years")}
+    }
+
+    # --- Commit everything ---
     db.commit()
-    return {"message": "Resume parsed and data saved successfully"}
+    db.refresh(candidate)
 
+    return {
+        "message": "Resume processed successfully",
+        "candidate_id": candidate.id,
+        "keywords": candidate.keywords,
+        "personalDetails": personal,
+        "languages": candidate.languagesKnown,
+    }
 
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 # jd
 class RawJobDescription(BaseModel):
     raw_text: str
@@ -240,7 +263,6 @@ If you are driven by innovation and committed to excellence, we want to hear fro
 """
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-
 @app.post("/enhance-jd")
 async def enhance_job_description(
     jd_input: RawJobDescription, profile_id: str = Depends(verify_jwt)
@@ -275,3 +297,6 @@ async def enhance_job_description(
         raise HTTPException(status_code=503, detail=f"AI service failed: {e}")
 
     return {"status": "success", "profileId": profile_id, "enhancedJobDescription": enhanced_jd}
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
