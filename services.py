@@ -15,7 +15,7 @@ from config import settings
 from datetime import datetime
 from logger import gemini_logger  # Import the logger
 # This is the correct class name
-from google.generativeai.types import GenerationConfig
+from google.generativeai.types import GenerationConfig      
 from dotenv import load_dotenv
 from typing import Optional
 from rapidfuzz import fuzz
@@ -46,7 +46,8 @@ def process_job(job_id: str, db: Session):
 def decode_jwt_token_job(token: str):
     if not token:
         raise HTTPException(
-            status_code=401, detail="Authorization header missing")
+            status_code=401, detail="Authorization token missing"
+        )
 
     if token.startswith("Bearer "):
         token = token.split(" ")[1].strip()
@@ -55,11 +56,12 @@ def decode_jwt_token_job(token: str):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if not isinstance(payload, dict):
             raise HTTPException(
-                status_code=401, detail="Invalid token payload")
+                status_code=401, detail="Invalid token payload"
+            )
         return payload
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -93,7 +95,7 @@ def get_candidate_id_from_token(authorization: str = Header(...)):
     token = authorization.split(" ")[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        candidate_id = payload.get("candidate_id")
+        candidate_id = payload.get("profileId")
         if not candidate_id:
             raise HTTPException(
                 status_code=401, detail="candidate_id missing in token")
@@ -412,7 +414,7 @@ def decode_jwt_token(token: str):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         print("Decoded JWT Payload:", payload)
 
-        candidate_id = payload.get("candidate_id")
+        candidate_id = payload.get("profileId")
         if candidate_id is None:
             raise HTTPException(
                 status_code=401, detail="Invalid token: candidate_id missing"
@@ -456,7 +458,7 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    profile_id = payload.get("profileId")
+    profile_id = payload.get("raw_text")
     if not profile_id:
         raise HTTPException(status_code=401, detail="Token missing profileId")
 

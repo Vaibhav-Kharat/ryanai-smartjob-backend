@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, Header
+from fastapi import FastAPI, Depends, HTTPException, Request, Header, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from db import get_db
@@ -10,7 +10,7 @@ from models import CandidateProfile, Education, User, EmployerProfile, Job, Cate
 from services import (
     process_job,
     process_candidate,
-    recommend_jobs_logic, resume_parsing, format_value, decode_jwt_token, verify_jwt,get_candidate_id_from_token, decode_jwt_token_job,decode_jwt_token_recommed_candidate, recommend_candidates_logic
+    recommend_jobs_logic, resume_parsing, format_value, decode_jwt_token, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_candidate, recommend_candidates_logic
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -33,24 +33,20 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 
-@app.get("/process-job")
+@app.get("/process-job/{job_id}")
 def process_single_job_route(
-    authorization: str = Header(...),  # expects Authorization header
+    job_id: str,                                # 👈 from URL path
+    authorization: str = Header(...),           # 👈 JWT from header
     db: Session = Depends(get_db)
 ):
     if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-    
-    payload = decode_jwt_token_job(authorization)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Failed to decode token")
+        raise HTTPException(
+            status_code=401, detail="Authorization header missing"
+        )
 
-    # Extract job_id from JWT payload
-    job_id = payload.get("job_id") or payload.get("sub")
-    if not job_id:
-        raise HTTPException(status_code=400, detail="job_id not found in token")
+    payload = decode_jwt_token_job(authorization)  # validate JWT
 
-    job = process_job(job_id, db)
+    job = process_job(job_id, db)                  # fetch job
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -69,13 +65,14 @@ def process_candidate_route(
     return {"candidate_id": candidate.id, "keywords": candidate.keywords}
 
 
-@app.get("/recommend-jobs")
+@app.get("/recommended-jobs")
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
     # Decode token and extract candidate_id
     payload = decode_jwt_token_recommed_candidate(Authorization)
-    candidate_id = payload.get("candidate_id")
+    candidate_id = payload.get("profileId")
     if not candidate_id:
-        raise HTTPException(status_code=400, detail="candidate_id not found in token")
+        raise HTTPException(
+            status_code=400, detail="candidate_id not found in token")
 
     results = recommend_jobs_logic(candidate_id, db)
     if not results:
@@ -84,7 +81,7 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
     return {"candidate_id": candidate_id, "recommended_jobs": results}
 
 
-@app.get("/recommend-candidates")
+@app.get("/recommended-candidates")
 def recommend_candidates(request: Request, db: Session = Depends(get_db)):
     # 1️⃣ Extract JWT token from header
     auth_header = request.headers.get("Authorization")
@@ -96,7 +93,7 @@ def recommend_candidates(request: Request, db: Session = Depends(get_db)):
     # 2️⃣ Decode JWT to get job_id and employer_user_id
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        job_id = payload.get("job_id")
+        job_id = payload.get("profileId")
         employer_user_id = payload.get("sub")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -107,14 +104,14 @@ def recommend_candidates(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Job ID missing in token")
 
     # 3️⃣ Call the business logic
-    recommended_candidates = recommend_candidates_logic(job_id, employer_user_id, db)
+    recommended_candidates = recommend_candidates_logic(
+        job_id, employer_user_id, db)
 
     if not recommended_candidates:
-        raise HTTPException(status_code=404, detail="No eligible candidates found")
+        raise HTTPException(
+            status_code=404, detail="No eligible candidates found")
 
     return {"job_id": job_id, "recommended_candidates": recommended_candidates}
-
-
 
 
 @app.get("/parse-resume")
@@ -131,7 +128,8 @@ def parse_resume_test(
     ).first()
 
     if not candidate or not candidate.resumeUrl:
-        raise HTTPException(status_code=404, detail="Candidate or Resume not found")
+        raise HTTPException(
+            status_code=404, detail="Candidate or Resume not found")
 
     # --- Extract resume text ---
     resume_text = extract_text_from_pdf(candidate.resumeUrl)
