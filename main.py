@@ -101,7 +101,7 @@ def recommend_candidates(request: Request, db: Session = Depends(get_db)):
     # 2️⃣ Decode JWT to get job_id and employer_user_id
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        job_id = payload.get("profileId")
+        job_id = payload.get("jobId")
         employer_user_id = payload.get("sub")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
