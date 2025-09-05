@@ -330,9 +330,9 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
 
         # Build candidate profile
         recommended.append({
-            "id": f"cand-{candidate.id}",
+            "id": candidate.id,
             "isBookmarked": is_bookmarked,
-            "user": {"fullName": user.fullName},
+            "user": user.fullName,
             "openToWork": candidate.openToWork,
             "currentLocation": candidate.currentLocation,
             "aircraftTypeRated": candidate.aircraftTypeRated or [],
