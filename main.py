@@ -78,7 +78,7 @@ def process_single_job_route(
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
     # Decode token and extract candidate_id
     payload = decode_jwt_token_recommed_job(Authorization)
-    employer_user_id = payload.get("employerId")
+    employer_user_id = payload.get("profileId")
     if not employer_user_id:
         raise HTTPException(
             status_code=400, detail="candidate_id not found in token")
