@@ -12,7 +12,7 @@ from fastapi import HTTPException, Depends, Header
 from jose import jwt, JWTError, ExpiredSignatureError
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
-from models import Job, CandidateProfile, EmployerProfile, Category, User
+from models import Job, CandidateProfile, EmployerProfile, Category, User, CandidateBookmark
 from utils import extract_job_keywords, generate_match_reason
 from config import settings
 from datetime import datetime
@@ -131,6 +131,16 @@ def normalize_experience(exp):
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
+def decode_jwt_token_recommed_job(token: str):
+    if token.startswith("Bearer "):
+        token = token.split(" ")[1].strip()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 def safe_int(value, default=0):
     """Safely convert to int, return default if conversion fails."""
     try:
@@ -232,107 +242,131 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
-def decode_jwt_token_recommed_candidate(token: str):
-    if token.startswith("Bearer "):
-        token = token.split(" ")[1].strip()
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 # down logic is for recommend candidates
-def recommend_candidates_logic(job_id: str, employer_user_id: str, db: Session):
-    # 1️⃣ Verify employer
+def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
+    # 1️⃣ Verify employer exists
     employer = db.query(EmployerProfile).filter(
-        EmployerProfile.userId == employer_user_id
+        EmployerProfile.id == employer_id
     ).first()
     if not employer:
         return []
 
-    # 2️⃣ Get job + keywords
+    # 2️⃣ Get job details and parse keywords
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job or not job.keywords:
         return []
+    
+    # Parse job keywords safely
+    try:
+        job_keywords = json.loads(job.keywords) if isinstance(job.keywords, str) else job.keywords
+    except json.JSONDecodeError:
+        job_keywords = {}
+    
+    # Handle both dictionary and list formats for job keywords
+    if isinstance(job_keywords, dict):
+        job_skills = job_keywords.get("skills", [])
+        job_exp_dict = job_keywords.get("experience") or {}
+        # Convert experience values to integers
+        job_min_exp = safe_int_convert(job_exp_dict.get("min_experience", 0))
+        job_max_exp = safe_int_convert(job_exp_dict.get("max_experience", 0))
+    elif isinstance(job_keywords, list):
+        job_skills = job_keywords
+        job_min_exp = 0
+        job_max_exp = 0
+    else:
+        job_skills = []
+        job_min_exp = 0
+        job_max_exp = 0
 
-    job_keywords = job.keywords
-    if isinstance(job_keywords, str):
-        try:
-            job_keywords = json.loads(job_keywords)
-        except json.JSONDecodeError:
-            job_keywords = {}
-
-    job_skills = job_keywords.get("skills", [])
-    job_exp_dict = job_keywords.get("experience") or {}
-    job_min_exp = job_exp_dict.get("min_experience", 0)
-    job_max_exp = job_exp_dict.get("max_experience", 0)
-
-    # 3️⃣ Fetch all candidates
+    # 3️⃣ Fetch all candidates with their related data
     candidates = db.query(CandidateProfile, User, Category).join(
         User, CandidateProfile.userId == User.id
     ).join(
         Category, CandidateProfile.categoryId == Category.id
     ).all()
 
+    # Pre-fetch bookmarks for efficiency
+    bookmarks = db.query(CandidateBookmark).filter_by(employerId=employer_id).all()
+    bookmarked_candidate_ids = {b.candidateId for b in bookmarks}
+
     recommended = []
 
-    # Fuzzy skill matching function
-    def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
-        matches = 0
-        for js in job_skills:
-            for cs in candidate_skills:
-                if cs and js and fuzz.token_set_ratio(js, cs) >= threshold:
-                    matches += 1
-                    break
-        return (matches / len(job_skills)) * 100 if job_skills else 0
-
+    # 4️⃣ Process each candidate
     for candidate, user, category in candidates:
-        candidate_keywords = candidate.keywords
-        if isinstance(candidate_keywords, str):
-            try:
-                candidate_keywords = json.loads(candidate_keywords)
-            except json.JSONDecodeError:
-                candidate_keywords = {}
+        # Parse candidate keywords safely
+        try:
+            candidate_keywords = json.loads(candidate.keywords) if isinstance(candidate.keywords, str) else candidate.keywords
+        except json.JSONDecodeError:
+            candidate_keywords = {}
+        
+        # Handle both dictionary and list formats for candidate keywords
+        if isinstance(candidate_keywords, dict):
+            candidate_skills = candidate_keywords.get("skills", [])
+            candidate_exp_dict = candidate_keywords.get("experience") or {}
+            # Convert candidate experience to integer
+            candidate_exp = safe_int_convert(candidate_exp_dict.get("years", 0))
+        elif isinstance(candidate_keywords, list):
+            candidate_skills = candidate_keywords
+            candidate_exp = 0  # Default experience if not available
+        else:
+            candidate_skills = []
+            candidate_exp = 0
 
-        candidate_skills = candidate_keywords.get("skills", [])
-        candidate_exp_dict = candidate_keywords.get("experience") or {}
-        candidate_exp = candidate_exp_dict.get("years") or 0
-
-        # --- Skills match %
+        # Calculate skill match using fuzzy matching
         skill_match_pct = calculate_skill_match_fuzzy(job_skills, candidate_skills)
-
-        # --- Experience match %
-        if job_max_exp == 0:
-            experience_match_pct = 0
+        
+        # Calculate experience match
+        if job_max_exp == 0:  # No max experience specified
+            experience_match_pct = 100 if candidate_exp >= job_min_exp else max(0, 100 - (job_min_exp - candidate_exp) * 20)
         else:
             if job_min_exp <= candidate_exp <= job_max_exp:
                 experience_match_pct = 100
             else:
-                diff = min(abs(candidate_exp - job_min_exp),
-                           abs(candidate_exp - job_max_exp))
+                diff = min(abs(candidate_exp - job_min_exp), abs(candidate_exp - job_max_exp))
                 experience_match_pct = max(0, 100 - diff * 20)
 
-        # --- Aggregate %
-        aggregate_pct = (skill_match_pct + experience_match_pct) / 2
+        # Check bookmark status
+        is_bookmarked = candidate.id in bookmarked_candidate_ids
 
+        # Build candidate profile
         recommended.append({
-            "id": candidate.id,
-            "fullName": user.fullName,
-            "image": user.image,
-            "jobCategory": category.name if category else None,
+            "id": f"cand-{candidate.id}",
+            "isBookmarked": is_bookmarked,
+            "user": {"fullName": user.fullName},
+            "openToWork": candidate.openToWork,
             "currentLocation": candidate.currentLocation,
+            "aircraftTypeRated": candidate.aircraftTypeRated or [],
             "totalExperience": candidate.totalExperience,
-            "nationality": candidate.nationality,
-            "resumeUrl": candidate.resumeUrl,
-            "skill_match_percentage": round(skill_match_pct),
-            "experience_match_percentage": round(experience_match_pct),
-            "aggregate_match_percentage": round(aggregate_pct),
+            "noticePeriod": candidate.noticePeriod,
+            "preferredJobType": candidate.preferredJobType,
+            "skillMatch": round(skill_match_pct, 2),
+            "experienceMatch": round(experience_match_pct, 2),
         })
 
-    # 4️⃣ Sort by aggregate match %
-    recommended.sort(key=lambda x: x["aggregate_match_percentage"], reverse=True)
+    # 5️⃣ Sort and return top candidates
+    recommended.sort(key=lambda x: (x["openToWork"], x["skillMatch"]), reverse=True)
     return recommended[:5]
+
+def safe_int_convert(value, default=0):
+    """Safely convert a value to integer, returning default if conversion fails"""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
+    """Calculate skill match percentage using fuzzy string matching"""
+    if not job_skills:
+        return 0
+    
+    matches = 0
+    for js in job_skills:
+        for cs in candidate_skills:
+            if cs and js and fuzz.token_set_ratio(js.lower(), cs.lower()) >= threshold:
+                matches += 1
+                break
+    return (matches / len(job_skills)) * 100
+
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#

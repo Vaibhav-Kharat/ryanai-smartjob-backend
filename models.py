@@ -85,6 +85,11 @@ class CandidateProfile(Base):
     nationality = Column(Text, nullable=True)
     phone = Column(Text, nullable=True)
     languagesKnown = Column(ARRAY(Text), nullable=True) 
+    openToWork = Column(Boolean, default=False)
+    aircraftTypeRated = Column(ARRAY(Text), nullable=True)
+    noticePeriod = Column(Text, nullable=True)
+    preferredJobType = Column(Text, nullable=True)
+
 
     # Relationships
     category = relationship("Category", backref="candidates")
@@ -109,3 +114,12 @@ class Education(Base):
 
 
     candidate = relationship("CandidateProfile", backref="educations")
+
+
+
+
+class CandidateBookmark(Base):
+    __tablename__ = "CandidateBookmark"
+    id = Column(Integer, primary_key=True, index=True)
+    employerId = Column(Integer, ForeignKey("EmployerProfile.id"))
+    candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))

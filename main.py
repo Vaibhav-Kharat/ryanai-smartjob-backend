@@ -9,7 +9,7 @@ from schemas import ResumeParsedResponse
 from models import CandidateProfile, Education, User, EmployerProfile, Job, Category
 from services import (
     process_job,
-    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_candidate, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token
+    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -75,51 +75,58 @@ def process_single_job_route(
 @app.get("/recommended-jobs")
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
     # Decode token and extract candidate_id
-    payload = decode_jwt_token_recommed_candidate(Authorization)
-    candidate_id = payload.get("profileId")
-    if not candidate_id:
+    payload = decode_jwt_token_recommed_job(Authorization)
+    employer_user_id = payload.get("employerId")
+    if not employer_user_id:
         raise HTTPException(
             status_code=400, detail="candidate_id not found in token")
 
-    results = recommend_jobs_logic(candidate_id, db)
+    results = recommend_jobs_logic(employer_user_id, db)
     if not results:
         raise HTTPException(status_code=404, detail="No recommendations found")
 
-    return {"candidate_id": candidate_id, "recommended_jobs": results}
+    return {"candidate_id": employer_user_id, "recommended_jobs": results}
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
-@app.get("/recommended-candidates")
-def recommend_candidates(request: Request, db: Session = Depends(get_db)):
-    # 1️⃣ Extract JWT token from header
+@app.get("/recommended-candidates/{jobId}")
+def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get_db)):
+    # 1️⃣ Extract and decode JWT
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-
+    
     token = auth_header.split(" ")[1]
-
-    # 2️⃣ Decode JWT to get job_id and employer_user_id
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        job_id = payload.get("jobId")
-        employer_user_id = payload.get("sub")
+        employer_id = payload.get("profileId")
+        print(f"Decoded JWT payload: {payload}")  # For debugging
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    
+    if not employer_id:
+        raise HTTPException(status_code=400, detail="Employer ID missing in token")
 
-    if not job_id:
-        raise HTTPException(status_code=400, detail="Job ID missing in token")
+    # 2️⃣ Verify job belongs to this employer
+    job = db.query(Job).filter(Job.id == jobId).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Ensure consistent type comparison (both as strings or both as integers)
+    if str(job.employerId) != str(employer_id):
+        raise HTTPException(status_code=403, detail="This job does not belong to you")
 
-    # 3️⃣ Call the business logic
-    recommended_candidates = recommend_candidates_logic(
-        job_id, employer_user_id, db)
-
+    # 3️⃣ Get recommended candidates
+    recommended_candidates = recommend_candidates_logic(jobId, employer_id, db)
     if not recommended_candidates:
-        raise HTTPException(
-            status_code=404, detail="No eligible candidates found")
-
-    return {"job_id": job_id, "recommended_candidates": recommended_candidates}
+        raise HTTPException(status_code=404, detail="No eligible candidates found")
+    
+    return {
+        "job_id": jobId,
+        "recommended_candidates": recommended_candidates
+    }
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------#
