@@ -84,38 +84,32 @@ class CandidateProfile(Base):
     totalExperience = Column(Integer, nullable=True)
     nationality = Column(Text, nullable=True)
     phone = Column(Text, nullable=True)
-    languagesKnown = Column(ARRAY(Text), nullable=True) 
+    languagesKnown = Column(ARRAY(Text), nullable=True)
     openToWork = Column(Boolean, default=False)
     aircraftTypeRated = Column(ARRAY(Text), nullable=True)
     noticePeriod = Column(Text, nullable=True)
     preferredJobType = Column(Text, nullable=True)
-
 
     # Relationships
     category = relationship("Category", backref="candidates")
     user = relationship("User", back_populates="candidate_profile")
 
 
-
-
-
 class Education(Base):
     __tablename__ = "Education"
     id = Column(Integer, primary_key=True, index=True)
-    candidateProfileId = Column(Integer, ForeignKey("CandidateProfile.id"))
+    candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
     qualification = Column(Text, nullable=True)
     fieldOfStudy = Column(Text, nullable=True)   # ✅ make nullable
     instituteName = Column(Text, nullable=True)
     yearOfGraduation = Column(Integer, nullable=True)
     grade = Column(Text, nullable=True)
-    createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updatedAt = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-
+    createdAt = Column(DateTime(timezone=True),
+                       server_default=func.now(), nullable=False)
+    updatedAt = Column(DateTime(timezone=True), server_default=func.now(
+    ), onupdate=func.now(), nullable=False)
 
     candidate = relationship("CandidateProfile", backref="educations")
-
-
 
 
 class CandidateBookmark(Base):

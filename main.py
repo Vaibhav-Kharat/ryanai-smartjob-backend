@@ -23,9 +23,9 @@ from datetime import datetime
 from logger import gemini_logger  # Import the logger
 
 
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 nlp = spacy.load("en_core_web_sm")
 app = FastAPI()
@@ -33,9 +33,11 @@ security = HTTPBearer()
 load_dotenv()  # Load .env variables
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
+
 @app.get("/process-job/{job_id}")
 def process_single_job_route(
     job_id: str,                                # 👈 from URL path
@@ -54,9 +56,9 @@ def process_single_job_route(
         raise HTTPException(status_code=404, detail="Job not found")
 
     return {"job_id": job.id, "keywords": job.keywords}
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 
 
 # @app.get("/process-candidate")
@@ -69,9 +71,9 @@ def process_single_job_route(
 #         raise HTTPException(status_code=404, detail="Candidate not found")
 
 #     return {"candidate_id": candidate.id, "keywords": candidate.keywords}
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 @app.get("/recommended-jobs")
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
     # Decode token and extract candidate_id
@@ -86,16 +88,18 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
         raise HTTPException(status_code=404, detail="No recommendations found")
 
     return {"candidate_id": employer_user_id, "recommended_jobs": results}
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
+
 @app.get("/recommended-candidates/{jobId}")
 def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get_db)):
     # 1️⃣ Extract and decode JWT
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
+
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -105,31 +109,35 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     if not employer_id:
-        raise HTTPException(status_code=400, detail="Employer ID missing in token")
+        raise HTTPException(
+            status_code=400, detail="Employer ID missing in token")
 
     # 2️⃣ Verify job belongs to this employer
     job = db.query(Job).filter(Job.id == jobId).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     # Ensure consistent type comparison (both as strings or both as integers)
     if str(job.employerId) != str(employer_id):
-        raise HTTPException(status_code=403, detail="This job does not belong to you")
+        raise HTTPException(
+            status_code=403, detail="This job does not belong to you")
 
     # 3️⃣ Get recommended candidates
     recommended_candidates = recommend_candidates_logic(jobId, employer_id, db)
     if not recommended_candidates:
-        raise HTTPException(status_code=404, detail="No eligible candidates found")
-    
+        raise HTTPException(
+            status_code=404, detail="No eligible candidates found")
+
     return {
         "job_id": jobId,
         "recommended_candidates": recommended_candidates
     }
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
 
 @app.get("/parse-resume")
 def process_resume(
@@ -145,7 +153,8 @@ def process_resume(
     ).first()
 
     if not candidate or not candidate.resumeUrl:
-        raise HTTPException(status_code=404, detail="Candidate or Resume not found")
+        raise HTTPException(
+            status_code=404, detail="Candidate or Resume not found")
 
     # --- Extract resume text ---
     resume_text = extract_text_from_pdf(candidate.resumeUrl)
@@ -172,17 +181,17 @@ def process_resume(
     )
 
     # --- Save education ---
-    db.query(Education).filter(Education.candidateProfileId == candidate.id).delete()
+    db.query(Education).filter(Education.candidateId == candidate.id).delete()
     for edu in parsed_data.get("education", []):
         education_entry = Education(
-        candidateProfileId=candidate.id,
-        qualification=format_value(edu.get("qualification") or "N/A"),
-        fieldOfStudy=format_value(edu.get("fieldOfStudy") or "N/A"),
-        instituteName=format_value(edu.get("instituteName") or "N/A"),
-        yearOfGraduation=None,
-        grade="N/A",
-        updatedAt=datetime.utcnow(),
-        createdAt=datetime.utcnow()
+            candidateId=candidate.id,
+            qualification=format_value(edu.get("qualification") or "N/A"),
+            fieldOfStudy=format_value(edu.get("fieldOfStudy") or "N/A"),
+            instituteName=format_value(edu.get("instituteName") or "N/A"),
+            yearOfGraduation=None,
+            grade="N/A",
+            updatedAt=datetime.utcnow(),
+            createdAt=datetime.utcnow()
         )
         db.add(education_entry)
 
@@ -204,10 +213,12 @@ def process_resume(
         "languages": candidate.languagesKnown,
     }
 
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 # jd
+
+
 class RawJobDescription(BaseModel):
     raw_text: str
 
@@ -270,6 +281,7 @@ If you are driven by innovation and committed to excellence, we want to hear fro
 """
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+
 @app.post("/enhance-jd")
 async def enhance_job_description(
     jd_input: RawJobDescription, profile_id: str = Depends(verify_jwt)
@@ -304,6 +316,6 @@ async def enhance_job_description(
         raise HTTPException(status_code=503, detail=f"AI service failed: {e}")
 
     return {"status": "success", "profileId": profile_id, "enhancedJobDescription": enhanced_jd}
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
