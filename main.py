@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Query
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from db import get_db
 from pydantic import BaseModel
@@ -9,7 +9,7 @@ from schemas import ResumeParsedResponse
 from models import CandidateProfile, Education, User, EmployerProfile, Job, Category
 from services import (
     process_job,
-    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token
+    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token, calculate_match_score
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -33,6 +33,7 @@ security = HTTPBearer()
 load_dotenv()  # Load .env variables
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -319,3 +320,31 @@ async def enhance_job_description(
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
+
+
+@app.get("/match-score/{jobId}")
+def match_score(jobId: str, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    # ✅ Extract profileId from JWT
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    profile_id = payload.get("profileId")
+    if not profile_id:
+        raise HTTPException(
+            status_code=400, detail="Profile ID missing in token")
+
+    # ✅ Fetch candidate and job data
+    candidate = db.query(CandidateProfile).filter(
+        CandidateProfile.id == profile_id).first()
+    job = db.query(Job).filter(Job.id == jobId).first()
+
+    if not candidate or not job:
+        raise HTTPException(
+            status_code=404, detail="Candidate or Job not found")
+
+    candidate_keywords = candidate.keywords or {}
+    job_keywords = job.keywords or {}
+
+    # ✅ Calculate scores
+    result = calculate_match_score(
+        candidate_keywords, job_keywords, candidate.totalExperience)
+
+    return result

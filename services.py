@@ -18,21 +18,23 @@ from config import settings
 from datetime import datetime
 from logger import gemini_logger  # Import the logger
 # This is the correct class name
-from google.generativeai.types import GenerationConfig      
+from google.generativeai.types import GenerationConfig
 from dotenv import load_dotenv
 from typing import Optional
 from rapidfuzz import fuzz
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 nlp = spacy.load("en_core_web_sm")
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 load_dotenv()  # Load .env variables
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
+
 def process_job(job_id: str, db: Session):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -46,6 +48,7 @@ def process_job(job_id: str, db: Session):
     db.refresh(job)
 
     return job
+
 
 def decode_jwt_token_job(token: str):
     if not token:
@@ -67,9 +70,9 @@ def decode_jwt_token_job(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 
 
 # def process_candidate(candidate_id: int, db: Session):
@@ -90,9 +93,9 @@ def decode_jwt_token_job(token: str):
 #     db.refresh(candidate)
 
 #     return candidate
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 def get_candidate_id_from_token(authorization: str = Header(...)):
     """
     Extract candidate_id from JWT token in Authorization header
@@ -113,6 +116,7 @@ def get_candidate_id_from_token(authorization: str = Header(...)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
 def normalize_skills(skills):
     if not skills:
         return set()
@@ -122,15 +126,18 @@ def normalize_skills(skills):
         return set([s.strip() for s in skills if isinstance(s, str) and s.strip()])
     return set()
 
+
 def normalize_experience(exp):
     if not exp:
         return None
     if isinstance(exp, str):  # e.g. "2-4"
         return exp.strip()
     return str(exp).strip()
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
+
 def decode_jwt_token_recommed_job(token: str):
     if token.startswith("Bearer "):
         token = token.split(" ")[1].strip()
@@ -141,12 +148,16 @@ def decode_jwt_token_recommed_job(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
 def safe_int(value, default=0):
     """Safely convert to int, return default if conversion fails."""
     try:
         return int(value)
     except (ValueError, TypeError):
         return default
+
+
 def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
         CandidateProfile.id == candidate_id
@@ -194,11 +205,14 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         job_min_exp = safe_int(job_exp_dict.get("min_experience"))
         job_max_exp = safe_int(job_exp_dict.get("max_experience"))
 
+        # print(f"Candidate skills: {candidate_skills}, experience: {candidate_exp}")
+        # print(f"Job {job.id} skills: {job_skills}, experience: {job_min_exp}-{job_max_exp}")
         # --- Skill Match ---
         skill_match_pct = (
             (len(candidate_skills.intersection(job_skills)) / len(job_skills)) * 100
             if job_skills else 0
         )
+        # print(f"Job {job.id} skill match: {skill_match_pct}%")
 
         # --- Experience Match ---
         if job_max_exp == 0:  # no exp specified
@@ -239,10 +253,12 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
     )
 
     return job_matches[:5]
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 # down logic is for recommend candidates
+
+
 def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     # 1️⃣ Verify employer exists
     employer = db.query(EmployerProfile).filter(
@@ -255,13 +271,14 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job or not job.keywords:
         return []
-    
+
     # Parse job keywords safely
     try:
-        job_keywords = json.loads(job.keywords) if isinstance(job.keywords, str) else job.keywords
+        job_keywords = json.loads(job.keywords) if isinstance(
+            job.keywords, str) else job.keywords
     except json.JSONDecodeError:
         job_keywords = {}
-    
+
     # Handle both dictionary and list formats for job keywords
     if isinstance(job_keywords, dict):
         job_skills = job_keywords.get("skills", [])
@@ -286,7 +303,8 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     ).all()
 
     # Pre-fetch bookmarks for efficiency
-    bookmarks = db.query(CandidateBookmark).filter_by(employerId=employer_id).all()
+    bookmarks = db.query(CandidateBookmark).filter_by(
+        employerId=employer_id).all()
     bookmarked_candidate_ids = {b.candidateId for b in bookmarks}
 
     recommended = []
@@ -295,16 +313,18 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     for candidate, user, category in candidates:
         # Parse candidate keywords safely
         try:
-            candidate_keywords = json.loads(candidate.keywords) if isinstance(candidate.keywords, str) else candidate.keywords
+            candidate_keywords = json.loads(candidate.keywords) if isinstance(
+                candidate.keywords, str) else candidate.keywords
         except json.JSONDecodeError:
             candidate_keywords = {}
-        
+
         # Handle both dictionary and list formats for candidate keywords
         if isinstance(candidate_keywords, dict):
             candidate_skills = candidate_keywords.get("skills", [])
             candidate_exp_dict = candidate_keywords.get("experience") or {}
             # Convert candidate experience to integer
-            candidate_exp = safe_int_convert(candidate_exp_dict.get("years", 0))
+            candidate_exp = safe_int_convert(
+                candidate_exp_dict.get("years", 0))
         elif isinstance(candidate_keywords, list):
             candidate_skills = candidate_keywords
             candidate_exp = 0  # Default experience if not available
@@ -313,16 +333,19 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
             candidate_exp = 0
 
         # Calculate skill match using fuzzy matching
-        skill_match_pct = calculate_skill_match_fuzzy(job_skills, candidate_skills)
-        
+        skill_match_pct = calculate_skill_match_fuzzy(
+            job_skills, candidate_skills)
+
         # Calculate experience match
         if job_max_exp == 0:  # No max experience specified
-            experience_match_pct = 100 if candidate_exp >= job_min_exp else max(0, 100 - (job_min_exp - candidate_exp) * 20)
+            experience_match_pct = 100 if candidate_exp >= job_min_exp else max(
+                0, 100 - (job_min_exp - candidate_exp) * 20)
         else:
             if job_min_exp <= candidate_exp <= job_max_exp:
                 experience_match_pct = 100
             else:
-                diff = min(abs(candidate_exp - job_min_exp), abs(candidate_exp - job_max_exp))
+                diff = min(abs(candidate_exp - job_min_exp),
+                           abs(candidate_exp - job_max_exp))
                 experience_match_pct = max(0, 100 - diff * 20)
 
         # Check bookmark status
@@ -344,8 +367,10 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
         })
 
     # 5️⃣ Sort and return top candidates
-    recommended.sort(key=lambda x: (x["openToWork"], x["skillMatch"]), reverse=True)
+    recommended.sort(key=lambda x: (
+        x["openToWork"], x["skillMatch"]), reverse=True)
     return recommended[:5]
+
 
 def safe_int_convert(value, default=0):
     """Safely convert a value to integer, returning default if conversion fails"""
@@ -354,11 +379,12 @@ def safe_int_convert(value, default=0):
     except (ValueError, TypeError):
         return default
 
+
 def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
     """Calculate skill match percentage using fuzzy string matching"""
     if not job_skills:
         return 0
-    
+
     matches = 0
     for js in job_skills:
         for cs in candidate_skills:
@@ -367,10 +393,9 @@ def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
                 break
     return (matches / len(job_skills)) * 100
 
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 
 
 def decode_jwt_token(authorization: str):
@@ -382,7 +407,8 @@ def decode_jwt_token(authorization: str):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         candidate_id = payload.get("profileId")
         if not candidate_id:
-            raise HTTPException(status_code=401, detail="candidate_id missing in token")
+            raise HTTPException(
+                status_code=401, detail="candidate_id missing in token")
         return candidate_id
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -473,10 +499,12 @@ def unified_resume_parser(resume_text: str):
 def format_value(val):
     return val if val and str(val).strip().lower() != "null" else None
 
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 # this is for jd api jwt authentication
+
+
 def verify_jwt(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(
@@ -499,6 +527,71 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Token missing profileId")
 
     return profile_id
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidate_experience: int):
+    # --- Skills matching ---
+    candidate_skills = set(map(str.lower, candidate_keywords.get("skills", [])))
+    job_skills = set(map(str.lower, job_keywords.get("skills", [])))
+
+    matched_skills = candidate_skills.intersection(job_skills)
+    skills_percentage = (len(matched_skills) / len(job_skills)) * 100 if job_skills else 0
+
+    # --- Experience matching ---
+    exp_match = 0
+    job_exp = job_keywords.get("experience", {})
+    
+    if isinstance(job_exp, dict):
+        job_required = job_exp.get("years") or job_exp.get("min_experience")
+        if job_required:
+            job_required_num = extract_numeric_experience(str(job_required))
+            if candidate_experience and job_required_num:
+                exp_match = min(candidate_experience / job_required_num, 1.0) * 100
+
+    # --- Aggregate ---
+    aggregate = (skills_percentage + exp_match) / 2
+
+    # --- Match reason (AI-generated or template logic) ---
+    match_reason = generate_match_reason(matched_skills, skills_percentage, exp_match)
+
+    return {
+        "skills_percentage": round(skills_percentage, 2),
+        "experience_percentage": round(exp_match, 2),
+        "aggregate_percentage": round(aggregate, 2),
+        "match_reason": match_reason
+    }
+
+
+
+def extract_numeric_experience(exp_str: str) -> int:
+    """
+    Convert '4+' or '2-5' or '3 years' into a numeric value
+    """
+    import re
+    match = re.findall(r"\d+", exp_str)
+    if not match:
+        return None
+    return int(match[0])
+
+def generate_match_reason(matched_skills, skills_percentage, exp_match):
+    reason_parts = []
+    
+    matched_skills_list = list(matched_skills)  # convert set to list
+    
+    if matched_skills_list:
+        reason_parts.append(f"Skills: {', '.join(matched_skills_list[:3])}")  # only first 3 skills
+
+    if skills_percentage > 70:
+        reason_parts.append("Skillset closely aligns with job requirements.")
+    if exp_match >= 80:
+        reason_parts.append("Experience level is well-suited for this role.")
+    if not reason_parts:
+        reason_parts.append("Limited overlap between candidate and job requirements.")
+    
+    return " ".join(reason_parts)
+
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
+
