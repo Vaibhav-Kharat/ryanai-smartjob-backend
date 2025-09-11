@@ -6,6 +6,10 @@ import requests
 import fitz  # PyMuPDF
 import httpx
 
+# Frontend Callback Configuration:
+# To disable frontend callbacks, set environment variable: ENABLE_FRONTEND_CALLBACKS=false
+# To change frontend URL, set: FRONTEND_CALLBACK_URL=http://your-frontend-url
+
 import traceback
 import google.generativeai as genai
 import spacy
@@ -126,20 +130,28 @@ async def recommend_candidates_for_job(job_id: str, db: Session):
             print("AI JSON parse error:", e, "RAW:", ai_response)
             result = {"recommended": []}
 
-        # ✅ Callback frontend with recommendations
-        async with httpx.AsyncClient() as client:
-            FRONTEND_CALLBACK_URL = os.getenv(
-                "FRONTEND_CALLBACK_URL",
-                "http://localhost:8086/recommendations-callback"  # fallback
-            )
+        # ✅ Optional frontend callback (can be disabled via environment variable)
+        if os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    FRONTEND_CALLBACK_URL = os.getenv(
+                        "FRONTEND_CALLBACK_URL",
+                        "http://localhost:8087/recommendations-callback"
+                    )
 
-        await httpx.post(
-            FRONTEND_CALLBACK_URL,
-            json={
-                "job_id": job_id,
-                "recommended_candidates": result.get("recommended", [])
-            }
-        )
+                    response = await client.post(
+                        FRONTEND_CALLBACK_URL,
+                        json={
+                            "job_id": job_id,
+                            "recommended_candidates": result.get("recommended", [])
+                        }
+                    )
+                    if response.status_code == 200:
+                        print(f"✅ Sent candidate recommendations to frontend for job {job_id}")
+            except (httpx.ConnectError, httpx.TimeoutException):
+                print(f"ℹ️ Frontend not available - candidate recommendations processed successfully")
+            except Exception as e:
+                print(f"⚠️ Frontend callback failed (non-critical): {str(e)[:100]}")
 
     except Exception as e:
         print(f"Error recommending candidates for job {job_id}: {e}")
@@ -655,17 +667,26 @@ def run_recommendation_task(candidate_id: int):
             print("AI parsing error:", e, "Raw:", cleaned)
             recommended_jobs = []
 
-        # --- Callback frontend API ---
-        if recommended_jobs:
-            callback_url = "http://localhost:8086/recommendations-callback-parse-resume"
-            payload = {
-                "candidateId": candidate.id,
-                "recommendedJobs": recommended_jobs
-            }
+        # --- Optional frontend callback (can be disabled via environment variable) ---
+        if recommended_jobs and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
-                requests.post(callback_url, json=payload, timeout=10)
+                callback_url = os.getenv(
+                    "FRONTEND_CALLBACK_URL", 
+                    "http://localhost:8087/recommendations-callback-parse-resume"
+                )
+                payload = {
+                    "candidateId": candidate.id,
+                    "recommendedJobs": recommended_jobs
+                }
+                response = requests.post(callback_url, json=payload, timeout=3)
+                if response.status_code == 200:
+                    print(f"✅ Sent job recommendations to frontend for candidate {candidate.id}")
+            except requests.exceptions.ConnectionError:
+                print(f"ℹ️ Frontend not available - job recommendations processed successfully")
+            except requests.exceptions.Timeout:
+                print(f"⚠️ Frontend callback timeout - continuing without notification")
             except Exception as e:
-                print("Failed to callback frontend:", e)
+                print(f"⚠️ Frontend callback failed (non-critical): {str(e)[:100]}")
 
     finally:
         db.close()

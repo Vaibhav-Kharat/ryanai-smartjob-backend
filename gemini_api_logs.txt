@@ -2379,3 +2379,17 @@
     "timestamp": "2025-09-11T16:27:23.427045"
   }
 }
+2025-09-11 16:28:46,977 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-11T16:28:46.977446",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2606
+  },
+  "response": {
+    "tokens_used": 873,
+    "prompt_tokens": 647,
+    "candidates_tokens": 226,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-11T16:28:46.977423"
+  }
+}
