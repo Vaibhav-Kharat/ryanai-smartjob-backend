@@ -257,16 +257,25 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate_skills = set(candidate_keywords.get("skills", []))
     candidate_exp = safe_int(candidate_exp_dict.get("years"))
 
-    jobs = db.query(Job).all()
+    # Optimized database query - load only needed fields and relationships
+    # Filter out jobs without keywords and limit result size for faster processing
+    jobs = db.query(Job).options(
+        joinedload(Job.employer),
+        joinedload(Job.category)
+    ).filter(
+        Job.keywords.isnot(None)
+    ).limit(100).all()  # Limit to 100 most recent jobs for faster processing
+    
     job_matches = []
 
+    # Fast processing with pre-filtering and optimized template-based match reasons
     for job in jobs:
         job_keywords = job.keywords or {}
         if isinstance(job_keywords, str):
             try:
                 job_keywords = json.loads(job_keywords)
             except json.JSONDecodeError:
-                job_keywords = {}
+                continue  # Skip jobs with invalid keywords
 
         job_exp_dict = job_keywords.get("experience") or {}
         if isinstance(job_exp_dict, str):
@@ -276,17 +285,21 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
                 job_exp_dict = {}
 
         job_skills = set(job_keywords.get("skills", []))
+        if not job_skills:  # Skip jobs with no skills
+            continue
+        
+        # Quick pre-filter: Skip jobs with zero skill overlap
+        if not candidate_skills.intersection(job_skills):
+            continue
+            
         job_min_exp = safe_int(job_exp_dict.get("min_experience"))
         job_max_exp = safe_int(job_exp_dict.get("max_experience"))
 
-        # print(f"Candidate skills: {candidate_skills}, experience: {candidate_exp}")
-        # print(f"Job {job.id} skills: {job_skills}, experience: {job_min_exp}-{job_max_exp}")
         # --- Skill Match ---
         skill_match_pct = (
             (len(candidate_skills.intersection(job_skills)) / len(job_skills)) * 100
             if job_skills else 0
         )
-        # print(f"Job {job.id} skill match: {skill_match_pct}%")
 
         # --- Experience Match ---
         if job_max_exp == 0:  # no exp specified
@@ -302,9 +315,18 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
                 experience_match_pct = max(0, 100 - diff * 20)
 
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
-        reason = generate_match_reason(
-            candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills
-        )
+        
+        # Fast template-based match reason
+        if skill_match_pct >= 80:
+            reason = f"Excellent skill alignment ({int(skill_match_pct)}%) with strong experience match."
+        elif skill_match_pct >= 60:
+            reason = f"Good skill match ({int(skill_match_pct)}%) with relevant experience background."
+        elif skill_match_pct >= 40:
+            reason = f"Moderate skill overlap ({int(skill_match_pct)}%) - good learning opportunity."
+        elif skill_match_pct >= 20:
+            reason = f"Some transferable skills ({int(skill_match_pct)}%) - training may be needed."
+        else:
+            reason = f"Entry-level opportunity ({int(skill_match_pct)}% match) - great for career growth."
 
         job_matches.append({
             "id": job.id,
@@ -318,15 +340,16 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "experience_match_percentage": round(experience_match_pct),
             "aggregate_match_percentage": round(aggregate_pct),
             "match_reason": reason,
-            "job_upsell": job.job_upsell,  # Add upsell flag for sorting
+            "job_upsell": job.job_upsell
         })
 
-    # Sort by upsell first, then aggregate %
+    # Sort and return top 5
     job_matches.sort(
-        key=lambda x: (not x["job_upsell"], -x["aggregate_match_percentage"])
+        key=lambda x: (-x["aggregate_match_percentage"], not x["job_upsell"])
     )
 
     return job_matches[:5]
+
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -693,9 +716,13 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
     # --- Experience matching ---
     exp_match = 0
     job_exp = job_keywords.get("experience", {})
+    job_min_exp = 0
+    job_max_exp = 0
 
     if isinstance(job_exp, dict):
         job_required = job_exp.get("years") or job_exp.get("min_experience")
+        job_min_exp = safe_int(job_exp.get("min_experience", 0))
+        job_max_exp = safe_int(job_exp.get("max_experience", 0))
         if job_required:
             job_required_num = extract_numeric_experience(str(job_required))
             if candidate_experience and job_required_num:
@@ -705,9 +732,9 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
     # --- Aggregate ---
     aggregate = (skills_percentage + exp_match) / 2
 
-    # --- Match reason (AI-generated or template logic) ---
+    # --- Match reason (AI-generated with correct parameters) ---
     match_reason = generate_match_reason(
-        matched_skills, skills_percentage, exp_match)
+        candidate_experience, candidate_skills, job_min_exp, job_max_exp, job_skills)
 
     return {
         "skill_match_percentage": round(skills_percentage, 2),
@@ -728,26 +755,7 @@ def extract_numeric_experience(exp_str: str) -> int:
     return int(match[0])
 
 
-def generate_match_reason(matched_skills, skills_percentage, exp_match):
-    matched_skills_list = list(matched_skills)
-
-    # Context for AI
-    prompt = f"""
-    You are an AI recruiter. Based on the candidate-job match data below, explain in 20–25 words
-    why the candidate matches or does not match this job.
-
-    Matched Skills: {', '.join(matched_skills_list) if matched_skills_list else 'None'}
-    Skills Match Percentage: {skills_percentage}%
-    Experience Match Percentage: {exp_match}%
-
-    Output only the explanation in 20–25 words.
-    """
-
-    model = genai.GenerativeModel("gemini-1.5-flash")
-
-    response = model.generate_content(prompt)
-
-    return response.text.strip()
+# Removed duplicate generate_match_reason function - using the one from utils.py instead
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#

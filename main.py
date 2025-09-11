@@ -90,6 +90,8 @@ async def recommendations_callback(request: Request):
 # -------------------------------------------------------------------------------#
 @app.get("/recommended-jobs")
 def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(get_db)):
+    start_time = datetime.now()
+    
     # Decode token and extract candidate_id
     payload = decode_jwt_token_recommed_job(Authorization)
     employer_user_id = payload.get("profileId")
@@ -100,6 +102,11 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
     results = recommend_jobs_logic(employer_user_id, db)
     if not results:
         raise HTTPException(status_code=404, detail="No recommendations found")
+
+    # Simple completion logging
+    end_time = datetime.now()
+    processing_time = (end_time - start_time).total_seconds()
+    print(f"✅ Job recommendations completed in {processing_time:.2f}s for candidate {employer_user_id}")
 
     return {"candidate_id": employer_user_id, "recommended_jobs": results}
 # -------------------------------------------------------------------------------#

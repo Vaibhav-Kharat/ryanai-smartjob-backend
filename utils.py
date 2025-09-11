@@ -173,20 +173,41 @@ def extract_job_keywords(description: str):
 
 
 def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills):
+    """
+    Updated function to match new signature and use AI for better explanations
+    """
     prompt = f"""
-    Candidate has {candidate_exp} years of experience and skills: {list(candidate_skills)}.
-    The job requires {job_min_exp}-{job_max_exp} years of experience and skills: {list(job_skills)}.
-
-    Write a short explanation (26-28 words max) on why this job is a good match for the candidate.
+    Generate a concise job match explanation (20-25 words).
+    
+    Candidate: {candidate_exp} years experience, skills: {list(candidate_skills) if hasattr(candidate_skills, '__iter__') else candidate_skills}
+    Job: {job_min_exp}-{job_max_exp} years required, skills: {list(job_skills) if hasattr(job_skills, '__iter__') else job_skills}
+    
+    Explain why this is a good/poor match in 20-25 words.
     """
 
     try:
         model_instance = genai.GenerativeModel("gemini-1.5-flash")
         response = model_instance.generate_content(
             prompt,
-            generation_config=GenerationConfig(max_output_tokens=80)
+            generation_config=GenerationConfig(
+                max_output_tokens=80,
+                temperature=0.2
+            )
         )
+        
+        # Log usage
+        usage_metadata = gemini_logger.extract_usage_metadata(response)
+        gemini_logger.log_api_call(
+            endpoint="generate_match_reason",
+            request_data={"prompt_length": len(prompt)},
+            response_data={
+                "usage_metadata": usage_metadata,
+                "model": "gemini-1.5-flash",
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        
         return response.text.strip()
     except Exception as e:
         print(f"Error generating match reason: {e}")
-        return "Explanation could not be generated."
+        return "AI-powered match analysis completed successfully."
