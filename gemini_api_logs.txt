@@ -2393,3 +2393,31 @@
     "timestamp": "2025-09-11T16:28:46.977423"
   }
 }
+2025-09-11 17:32:50,065 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-11T17:32:50.063010",
+  "endpoint": "enhance_job_description",
+  "request": {
+    "prompt_length": 3486
+  },
+  "response": {
+    "tokens_used": 1257,
+    "prompt_tokens": 741,
+    "candidates_tokens": 516,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-11T17:32:50.062940"
+  }
+}
+2025-09-11 18:16:39,504 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-11T18:16:39.503803",
+  "endpoint": "enhance_job_description",
+  "request": {
+    "prompt_length": 3486
+  },
+  "response": {
+    "tokens_used": 1244,
+    "prompt_tokens": 741,
+    "candidates_tokens": 503,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-11T18:16:39.503294"
+  }
+}

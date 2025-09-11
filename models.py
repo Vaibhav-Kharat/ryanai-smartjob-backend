@@ -26,6 +26,7 @@ class User(Base):
     image = Column(Text, nullable=True)
     email = Column(Text, unique=True, index=True)
     password = Column(Text, nullable=False)
+    role = Column(Text, nullable=False)
 
     # optional relationship to CandidateProfile
     candidate_profile = relationship(

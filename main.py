@@ -9,7 +9,7 @@ from schemas import ResumeParsedResponse
 from models import CandidateProfile, Education, User, EmployerProfile, Job, Category
 from services import (
     process_job,
-    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token, calculate_match_score, recommend_candidates_for_job,run_recommendation_task
+    recommend_jobs_logic, verify_jwt_and_role, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token, calculate_match_score, recommend_candidates_for_job,run_recommendation_task
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -318,9 +318,9 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 
 @app.post("/enhance-jd")
 async def enhance_job_description(
-    jd_input: RawJobDescription, profile_id: str = Depends(verify_jwt)
+    jd_input: RawJobDescription,
+    user_id: str = Depends(verify_jwt_and_role)
 ):
-    # ✅ You have validated profile_id from JWT
     if not jd_input.raw_text or len(jd_input.raw_text.strip()) < 20:
         raise HTTPException(status_code=400, detail="Input text too short")
 
@@ -341,7 +341,7 @@ async def enhance_job_description(
                 "usage_metadata": usage_metadata,
                 "model": "gemini-1.5-flash",
                 "timestamp": datetime.now().isoformat(),
-                "profile_id": profile_id  # log the profile using this request
+                "user_id": user_id
             }
         )
 
@@ -349,7 +349,7 @@ async def enhance_job_description(
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"AI service failed: {e}")
 
-    return {"status": "success", "profileId": profile_id, "enhancedJobDescription": enhanced_jd}
+    return {"status": "success", "userId": user_id, "enhancedJobDescription": enhanced_jd}
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#

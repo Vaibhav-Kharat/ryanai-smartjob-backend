@@ -19,7 +19,7 @@ from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
 from models import Job, CandidateProfile, EmployerProfile, Category, User, CandidateBookmark
 from utils import extract_job_keywords, generate_match_reason, generate_text
-from db import SessionLocal
+from db import SessionLocal, get_db
 from config import settings
 from datetime import datetime
 from logger import gemini_logger  # Import the logger
@@ -697,10 +697,12 @@ def run_recommendation_task(candidate_id: int):
 # this is for jd api jwt authentication
 
 
-def verify_jwt(authorization: Optional[str] = Header(None)):
+def verify_jwt_and_role(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
     if not authorization:
-        raise HTTPException(
-            status_code=401, detail="Authorization header missing")
+        raise HTTPException(status_code=401, detail="Authorization header missing")
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid token format")
@@ -714,11 +716,27 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    profile_id = payload.get("raw_text")
-    if not profile_id:
-        raise HTTPException(status_code=401, detail="Token missing profileId")
+    # ✅ fix key name
+    user_id = payload.get("userId")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token missing user_id")
+    
+    role = payload.get("role")
+    if role.upper() != "EMPLOYER":
+        raise HTTPException(status_code=403, detail="Only EMPLOYERs can enhance JD")
 
-    return profile_id
+
+    # check DB for role
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    print("verify jwt and role user role is ", user.role)
+
+    if user.role.upper() != "EMPLOYER":
+        raise HTTPException(status_code=403, detail="Only EMPLOYERs can enhance JD")
+
+    return user_id
+
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
