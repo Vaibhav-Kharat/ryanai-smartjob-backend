@@ -23,8 +23,6 @@ from config import settings  # assuming you store your API key in settings
 # Set your API key globally
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 
-# Example usage
-
 
 def generate_text(prompt, model="gemini-1.5-flash", temperature=0.7, max_tokens=300):
     try:

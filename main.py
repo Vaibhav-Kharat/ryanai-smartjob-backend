@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, Header, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, Header, Query, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from db import get_db
@@ -9,7 +9,7 @@ from schemas import ResumeParsedResponse
 from models import CandidateProfile, Education, User, EmployerProfile, Job, Category
 from services import (
     process_job,
-    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token, calculate_match_score
+    recommend_jobs_logic, verify_jwt, get_candidate_id_from_token, decode_jwt_token_job, decode_jwt_token_recommed_job, recommend_candidates_logic, format_value, extract_text_from_pdf, unified_resume_parser, decode_jwt_token, calculate_match_score, recommend_candidates_for_job,run_recommendation_task
 )
 # This is the correct class name
 from google.generativeai.types import GenerationConfig
@@ -40,10 +40,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
 @app.get("/process-job/{job_id}")
-def process_single_job_route(
-    job_id: str,                                # 👈 from URL path
-    authorization: str = Header(...),           # 👈 JWT from header
-    db: Session = Depends(get_db)
+async def process_single_job_route(
+    job_id: str,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     if not authorization:
         raise HTTPException(
@@ -52,11 +53,23 @@ def process_single_job_route(
 
     payload = decode_jwt_token_job(authorization)  # validate JWT
 
-    job = process_job(job_id, db)                  # fetch job
+    job = process_job(job_id, db)  # ✅ your original untouched logic
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return {"job_id": job.id, "keywords": job.keywords}
+    # 👇 Trigger recommendation in background (async, won’t block response)
+    background_tasks.add_task(recommend_candidates_for_job, job.id, db)
+
+    # ✅ Immediately return success (original behavior)
+    return {"success": True, "job_id": job.id, "keywords": job.keywords}
+
+
+# for timming this endpoint
+@app.post("/recommendations-callback")
+async def recommendations_callback(request: Request):
+    data = await request.json()
+    print("✅ Received recommendation callback:", data)
+    return {"message": "Callback received successfully"}
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -143,7 +156,8 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
 @app.get("/parse-resume")
 def process_resume(
     db: Session = Depends(get_db),
-    authorization: str = Header(...)
+    authorization: str = Header(...),
+    background_tasks: BackgroundTasks = None
 ):
     # --- Decode JWT ---
     candidate_id = decode_jwt_token(authorization)
@@ -155,7 +169,8 @@ def process_resume(
 
     if not candidate or not candidate.resumeUrl:
         raise HTTPException(
-            status_code=404, detail="Candidate or Resume not found")
+            status_code=404, detail="Candidate or Resume not found"
+        )
 
     # --- Extract resume text ---
     resume_text = extract_text_from_pdf(candidate.resumeUrl)
@@ -206,6 +221,9 @@ def process_resume(
     db.commit()
     db.refresh(candidate)
 
+    # ✅ Trigger async recommendation job after success
+    background_tasks.add_task(run_recommendation_task, candidate.id)
+
     return {
         "message": "Resume processed successfully",
         "candidate_id": candidate.id,
@@ -213,6 +231,14 @@ def process_resume(
         "personalDetails": personal,
         "languages": candidate.languagesKnown,
     }
+
+
+# for timming this endpoint
+@app.post("/recommendations-callback-parse-resume")
+async def recommendations_callback(request: Request):
+    data = await request.json()
+    print("✅ Received recommendation callback:", data)
+    return {"message": "Callback received successfully"}
 
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#

@@ -4,6 +4,7 @@ import os
 import io
 import requests
 import fitz  # PyMuPDF
+import httpx
 
 import traceback
 import google.generativeai as genai
@@ -13,7 +14,8 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
 from models import Job, CandidateProfile, EmployerProfile, Category, User, CandidateBookmark
-from utils import extract_job_keywords, generate_match_reason
+from utils import extract_job_keywords, generate_match_reason, generate_text
+from db import SessionLocal
 from config import settings
 from datetime import datetime
 from logger import gemini_logger  # Import the logger
@@ -70,6 +72,78 @@ def decode_jwt_token_job(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# the below logic is for alert to the candidates that this job is matching to you
+async def recommend_candidates_for_job(job_id: str, db: Session):
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job or not job.keywords:
+            return
+
+        # Collect candidate data
+        candidates = db.query(CandidateProfile).all()
+        candidate_data = []
+        for c in candidates:
+            if not c.keywords:
+                continue
+            candidate_data.append({
+                "candidate_id": c.id,
+                "skills": c.keywords.get("skills", []),
+                "experience": c.keywords.get("experience", {})
+            })
+
+        # Build AI prompt
+        prompt = f"""
+        You are a job-matching AI.
+        Match the job requirements with candidates and recommend the most suitable ones.
+
+        Job Keywords:
+        {json.dumps(job.keywords, indent=2)}
+
+        Candidates:
+        {json.dumps(candidate_data, indent=2)}
+
+        Return JSON in this format:
+        {{
+            "recommended": [
+                {{
+                    "candidate_id": <id>    
+                }}
+            ]
+        }}
+        """
+
+        # Call Gemini
+        ai_response = generate_text(
+            prompt, model="gemini-1.5-flash", temperature=0.3, max_tokens=500)
+
+        try:
+            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", ai_response.strip())
+            cleaned = re.sub(r"\n```$", "", cleaned)
+            result = json.loads(cleaned)
+        except Exception as e:
+            print("AI JSON parse error:", e, "RAW:", ai_response)
+            result = {"recommended": []}
+
+        # ✅ Callback frontend with recommendations
+        async with httpx.AsyncClient() as client:
+            FRONTEND_CALLBACK_URL = os.getenv(
+                "FRONTEND_CALLBACK_URL",
+                "http://localhost:8086/recommendations-callback"  # fallback
+            )
+
+        await httpx.post(
+            FRONTEND_CALLBACK_URL,
+            json={
+                "job_id": job_id,
+                "recommended_candidates": result.get("recommended", [])
+            }
+        )
+
+    except Exception as e:
+        print(f"Error recommending candidates for job {job_id}: {e}")
+
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -499,6 +573,80 @@ def unified_resume_parser(resume_text: str):
 def format_value(val):
     return val if val and str(val).strip().lower() != "null" else None
 
+
+
+def run_recommendation_task(candidate_id: int):
+    db = SessionLocal()
+    try:
+        candidate = db.query(CandidateProfile).filter(
+            CandidateProfile.id == candidate_id
+        ).first()
+
+        if not candidate or not candidate.keywords:
+            return
+
+        candidate_keywords = candidate.keywords.get("skills", [])
+
+        jobs = db.query(Job).all()
+        jobs_data = [
+            {
+                "jobId": job.id,
+                "title": job.title,
+                "keywords": job.keywords.get("skills", [])
+            }
+            for job in jobs
+        ]
+
+        # --- AI Prompt for Gemini ---
+        prompt = f"""
+        You are a job recommendation AI.
+        Given a candidate with skills: {candidate_keywords}
+        and the following jobs with their required skills:
+
+        {json.dumps(jobs_data, indent=2)}
+
+        Select the most suitable jobs for this candidate based on
+        skill match, relevance, and context.
+
+        Return strictly in JSON format like this:
+        [
+            {{
+                "jobId": 1
+            }}
+        ]
+        """
+
+        model_instance = genai.GenerativeModel("gemini-1.5-flash")
+        response = model_instance.generate_content(
+            prompt,
+            generation_config=GenerationConfig()
+        )
+
+        raw_text = response.text.strip()
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", raw_text)
+        cleaned = re.sub(r"\n```$", "", cleaned)
+
+        try:
+            recommended_jobs = json.loads(cleaned)
+        except Exception as e:
+            print("AI parsing error:", e, "Raw:", cleaned)
+            recommended_jobs = []
+
+        # --- Callback frontend API ---
+        if recommended_jobs:
+            callback_url = "http://localhost:8086/recommendations-callback-parse-resume"
+            payload = {
+                "candidateId": candidate.id,
+                "recommendedJobs": recommended_jobs
+            }
+            try:
+                requests.post(callback_url, json=payload, timeout=10)
+            except Exception as e:
+                print("Failed to callback frontend:", e)
+
+    finally:
+        db.close()
+
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -530,38 +678,43 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
+
+
 def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidate_experience: int):
     # --- Skills matching ---
-    candidate_skills = set(map(str.lower, candidate_keywords.get("skills", [])))
+    candidate_skills = set(
+        map(str.lower, candidate_keywords.get("skills", [])))
     job_skills = set(map(str.lower, job_keywords.get("skills", [])))
 
     matched_skills = candidate_skills.intersection(job_skills)
-    skills_percentage = (len(matched_skills) / len(job_skills)) * 100 if job_skills else 0
+    skills_percentage = (len(matched_skills) /
+                         len(job_skills)) * 100 if job_skills else 0
 
     # --- Experience matching ---
     exp_match = 0
     job_exp = job_keywords.get("experience", {})
-    
+
     if isinstance(job_exp, dict):
         job_required = job_exp.get("years") or job_exp.get("min_experience")
         if job_required:
             job_required_num = extract_numeric_experience(str(job_required))
             if candidate_experience and job_required_num:
-                exp_match = min(candidate_experience / job_required_num, 1.0) * 100
+                exp_match = min(candidate_experience /
+                                job_required_num, 1.0) * 100
 
     # --- Aggregate ---
     aggregate = (skills_percentage + exp_match) / 2
 
     # --- Match reason (AI-generated or template logic) ---
-    match_reason = generate_match_reason(matched_skills, skills_percentage, exp_match)
+    match_reason = generate_match_reason(
+        matched_skills, skills_percentage, exp_match)
 
     return {
-        "skills_percentage": round(skills_percentage, 2),
-        "experience_percentage": round(exp_match, 2),
-        "aggregate_percentage": round(aggregate, 2),
+        "skill_match_percentage": round(skills_percentage, 2),
+        "experience_match_percentage": round(exp_match, 2),
+        "aggregate_match_percentage": round(aggregate, 2),
         "match_reason": match_reason
     }
-
 
 
 def extract_numeric_experience(exp_str: str) -> int:
@@ -574,24 +727,27 @@ def extract_numeric_experience(exp_str: str) -> int:
         return None
     return int(match[0])
 
+
 def generate_match_reason(matched_skills, skills_percentage, exp_match):
-    reason_parts = []
-    
-    matched_skills_list = list(matched_skills)  # convert set to list
-    
-    if matched_skills_list:
-        reason_parts.append(f"Skills: {', '.join(matched_skills_list[:3])}")  # only first 3 skills
+    matched_skills_list = list(matched_skills)
 
-    if skills_percentage > 70:
-        reason_parts.append("Skillset closely aligns with job requirements.")
-    if exp_match >= 80:
-        reason_parts.append("Experience level is well-suited for this role.")
-    if not reason_parts:
-        reason_parts.append("Limited overlap between candidate and job requirements.")
-    
-    return " ".join(reason_parts)
+    # Context for AI
+    prompt = f"""
+    You are an AI recruiter. Based on the candidate-job match data below, explain in 20–25 words
+    why the candidate matches or does not match this job.
 
+    Matched Skills: {', '.join(matched_skills_list) if matched_skills_list else 'None'}
+    Skills Match Percentage: {skills_percentage}%
+    Experience Match Percentage: {exp_match}%
+
+    Output only the explanation in 20–25 words.
+    """
+
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    response = model.generate_content(prompt)
+
+    return response.text.strip()
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
-
