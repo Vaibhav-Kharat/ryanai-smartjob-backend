@@ -41,7 +41,9 @@ class EmployerProfile(Base):
     __tablename__ = "EmployerProfile"
     id = Column(Text, primary_key=True, index=True)
     companyName = Column(Text, nullable=False)
-    userId = Column(Text, unique=True, nullable=False)
+    userId = Column(Text, ForeignKey("User.id"), unique=True, nullable=False)
+
+    user = relationship("User", backref="employer_profile", uselist=False)
 
 # -------------------
 # Jobs

@@ -141,23 +141,28 @@ async def recommend_candidates_for_job(job_id: str, authorization: str):
                     "candidateId": cand.id,
                     "userId": cand.userId,
                     "title": job.title,
-                    "slug": job.slug
+                    "slug": job.slug,
+                    "email": cand.user.email,
+                    "fullName": cand.user.fullName
                 })
 
         # --- Send to frontend with original JWT ---
-        if os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
+        if final_recommendations and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
                 with httpx.Client(timeout=5.0) as client:
-                    response = client.post(
-                        settings.FRONTEND_CALLBACK_URL_PROCESS_JOB,
-                        json={
-                            "job_id": job_id,
-                            "recommended_candidates": final_recommendations
-                        },
-                        headers={"Authorization": authorization}
-                    )
+                    callback_url = f"{settings.FRONTEND_CALLBACK_URL_BASE}/notify-candidates"
+                    headers = {"Authorization": authorization}
 
-                    print("📩 Headers:", {"Authorization": authorization})
+                    payload = {
+                        "job_id": job_id,
+                        "recommended_candidates": final_recommendations
+                    }
+
+                    response = client.post(
+                        callback_url, json=payload, headers=headers)
+
+                    print("📡 Posting to:", callback_url)
+                    print("📩 Headers:", headers)
                     print("📦 Payload:", final_recommendations)
                     print("✅ Callback status:", response.status_code)
                     print("🔎 Callback response:", response.text)
@@ -689,9 +694,6 @@ def run_recommendation_task(candidate_id: int, authorization: str):
         final_recommendations = []
         for rec in recommended_jobs:
             job = db.query(Job).filter(Job.id == rec.get("jobId")).first()
-            print(job)
-            print(job.employer)
-            print(job.employer.userId if job.employer else None)
             if job:
                 final_recommendations.append({
                     "id": job.id,
@@ -699,16 +701,15 @@ def run_recommendation_task(candidate_id: int, authorization: str):
                     "title": job.title,
                     "candidateId": candidate.id,
                     "userId": job.employer.userId,
-                    "slug": job.slug
+                    "slug": job.slug,
+                    "employerEmail": job.employer.user.email if job.employer and job.employer.user else None,
+                    "employerName": job.employer.user.fullName if job.employer and job.employer.user else None
                 })
 
         # --- Send to frontend with original JWT ---
         if final_recommendations and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
-                callback_url = os.getenv(
-                    "FRONTEND_CALLBACK_URL_PARSE_RESUME",
-                    settings.FRONTEND_CALLBACK_URL_PARSE_RESUME
-                )
+                callback_url = f"{settings.FRONTEND_CALLBACK_URL_BASE}/notify-employers"
                 payload = {
                     "candidateId": candidate.id,
                     "recommendedJobs": final_recommendations
