@@ -150,7 +150,7 @@ async def recommend_candidates_for_job(job_id: str, authorization: str):
         if final_recommendations and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
                 with httpx.Client(timeout=5.0) as client:
-                    callback_url = f"{settings.FRONTEND_CALLBACK_URL_BASE}/notify-candidates"
+                    callback_url = settings.FRONTEND_CALLBACK_URL_PROCESS_JOB
                     headers = {"Authorization": authorization}
 
                     payload = {
@@ -709,7 +709,7 @@ def run_recommendation_task(candidate_id: int, authorization: str):
         # --- Send to frontend with original JWT ---
         if final_recommendations and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
-                callback_url = f"{settings.FRONTEND_CALLBACK_URL_BASE}/notify-employers"
+                callback_url = settings.FRONTEND_CALLBACK_URL_PARSE_RESUME
                 payload = {
                     "candidateId": candidate.id,
                     "recommendedJobs": final_recommendations
