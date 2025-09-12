@@ -3695,3 +3695,17 @@
     "timestamp": "2025-09-12T19:25:07.088925"
   }
 }
+2025-09-12 19:25:29,642 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-12T19:25:29.641967",
+  "endpoint": "extract_job_keywords",
+  "request": {
+    "prompt_length": 1361
+  },
+  "response": {
+    "tokens_used": 398,
+    "prompt_tokens": 261,
+    "candidates_tokens": 137,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-12T19:25:29.641953"
+  }
+}
