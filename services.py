@@ -79,13 +79,13 @@ def decode_jwt_token_job(token: str):
 
 
 # the below logic is for alert to the candidates that this job is matching to you
-async def recommend_candidates_for_job(job_id: str, db: Session):
+async def recommend_candidates_for_job(job_id: str, authorization: str):
+    db = SessionLocal()
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job or not job.keywords:
             return
 
-        # Collect candidate data
         candidates = db.query(CandidateProfile).all()
         candidate_data = []
         for c in candidates:
@@ -97,7 +97,7 @@ async def recommend_candidates_for_job(job_id: str, db: Session):
                 "experience": c.keywords.get("experience", {})
             })
 
-        # Build AI prompt
+        # --- AI Prompt ---
         prompt = f"""
         You are a job-matching AI.
         Match the job requirements with candidates and recommend the most suitable ones.
@@ -112,15 +112,15 @@ async def recommend_candidates_for_job(job_id: str, db: Session):
         {{
             "recommended": [
                 {{
-                    "candidate_id": <id>    
+                    "candidate_id": <id>
                 }}
             ]
         }}
         """
 
-        # Call Gemini
         ai_response = generate_text(
-            prompt, model="gemini-1.5-flash", temperature=0.3, max_tokens=500)
+            prompt, model="gemini-1.5-flash", temperature=0.3, max_tokens=500
+        )
 
         try:
             cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", ai_response.strip())
@@ -130,31 +130,51 @@ async def recommend_candidates_for_job(job_id: str, db: Session):
             print("AI JSON parse error:", e, "RAW:", ai_response)
             result = {"recommended": []}
 
-        # ✅ Optional frontend callback (can be disabled via environment variable)
+        # --- Build final payload ---
+        final_recommendations = []
+        for rec in result.get("recommended", []):
+            cand = db.query(CandidateProfile).filter(
+                CandidateProfile.id == rec.get("candidate_id")
+            ).first()
+            if cand:
+                final_recommendations.append({
+                    "candidateId": cand.id,
+                    "userId": cand.userId,
+                    "title": job.title,
+                    "slug": job.slug
+                })
+
+        # --- Send to frontend with original JWT ---
         if os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    FRONTEND_CALLBACK_URL = os.getenv(
-                        "FRONTEND_CALLBACK_URL",
-                        "http://localhost:8087/recommendations-callback"
-                    )
-
-                    response = await client.post(
-                        FRONTEND_CALLBACK_URL,
+                with httpx.Client(timeout=5.0) as client:
+                    response = client.post(
+                        settings.FRONTEND_CALLBACK_URL_PROCESS_JOB,
                         json={
                             "job_id": job_id,
-                            "recommended_candidates": result.get("recommended", [])
-                        }
+                            "recommended_candidates": final_recommendations
+                        },
+                        headers={"Authorization": authorization}
                     )
-                    if response.status_code == 200:
-                        print(f"✅ Sent candidate recommendations to frontend for job {job_id}")
-            except (httpx.ConnectError, httpx.TimeoutException):
-                print(f"ℹ️ Frontend not available - candidate recommendations processed successfully")
-            except Exception as e:
-                print(f"⚠️ Frontend callback failed (non-critical): {str(e)[:100]}")
 
-    except Exception as e:
-        print(f"Error recommending candidates for job {job_id}: {e}")
+                    print("📩 Headers:", {"Authorization": authorization})
+                    print("📦 Payload:", final_recommendations)
+                    print("✅ Callback status:", response.status_code)
+                    print("🔎 Callback response:", response.text)
+
+                    if response.status_code == 200:
+                        print(
+                            f"✅ Sent candidate recommendations to frontend for job {job_id}"
+                        )
+            except (httpx.ConnectError, httpx.TimeoutException):
+                print(
+                    "ℹ️ Frontend not available - candidate recommendations processed successfully")
+            except Exception as e:
+                print(
+                    f"⚠️ Frontend callback failed (non-critical): {str(e)[:100]}")
+    finally:
+        db.close()
+
 
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -277,7 +297,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
     ).filter(
         Job.keywords.isnot(None)
     ).limit(100).all()  # Limit to 100 most recent jobs for faster processing
-    
+
     job_matches = []
 
     # Fast processing with pre-filtering and optimized template-based match reasons
@@ -299,11 +319,11 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         job_skills = set(job_keywords.get("skills", []))
         if not job_skills:  # Skip jobs with no skills
             continue
-        
+
         # Quick pre-filter: Skip jobs with zero skill overlap
         if not candidate_skills.intersection(job_skills):
             continue
-            
+
         job_min_exp = safe_int(job_exp_dict.get("min_experience"))
         job_max_exp = safe_int(job_exp_dict.get("max_experience"))
 
@@ -327,7 +347,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
                 experience_match_pct = max(0, 100 - diff * 20)
 
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
-        
+
         # Fast template-based match reason
         if skill_match_pct >= 80:
             reason = f"Excellent skill alignment ({int(skill_match_pct)}%) with strong experience match."
@@ -609,8 +629,7 @@ def format_value(val):
     return val if val and str(val).strip().lower() != "null" else None
 
 
-
-def run_recommendation_task(candidate_id: int):
+def run_recommendation_task(candidate_id: int, authorization: str):
     db = SessionLocal()
     try:
         candidate = db.query(CandidateProfile).filter(
@@ -621,7 +640,6 @@ def run_recommendation_task(candidate_id: int):
             return
 
         candidate_keywords = candidate.keywords.get("skills", [])
-
         jobs = db.query(Job).all()
         jobs_data = [
             {
@@ -632,7 +650,7 @@ def run_recommendation_task(candidate_id: int):
             for job in jobs
         ]
 
-        # --- AI Prompt for Gemini ---
+        # --- AI Prompt ---
         prompt = f"""
         You are a job recommendation AI.
         Given a candidate with skills: {candidate_keywords}
@@ -646,7 +664,7 @@ def run_recommendation_task(candidate_id: int):
         Return strictly in JSON format like this:
         [
             {{
-                "jobId": 1
+                "jobId": "string"
             }}
         ]
         """
@@ -667,29 +685,54 @@ def run_recommendation_task(candidate_id: int):
             print("AI parsing error:", e, "Raw:", cleaned)
             recommended_jobs = []
 
-        # --- Optional frontend callback (can be disabled via environment variable) ---
-        if recommended_jobs and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
+        # --- Build final payload ---
+        final_recommendations = []
+        for rec in recommended_jobs:
+            job = db.query(Job).filter(Job.id == rec.get("jobId")).first()
+            print(job)
+            print(job.employer)
+            print(job.employer.userId if job.employer else None)
+            if job:
+                final_recommendations.append({
+                    "id": job.id,
+                    "employerId": job.employerId,
+                    "title": job.title,
+                    "candidateId": candidate.id,
+                    "userId": job.employer.userId,
+                    "slug": job.slug
+                })
+
+        # --- Send to frontend with original JWT ---
+        if final_recommendations and os.getenv("ENABLE_FRONTEND_CALLBACKS", "true").lower() == "true":
             try:
                 callback_url = os.getenv(
-                    "FRONTEND_CALLBACK_URL", 
-                    "http://localhost:8087/recommendations-callback-parse-resume"
+                    "FRONTEND_CALLBACK_URL_PARSE_RESUME",
+                    settings.FRONTEND_CALLBACK_URL_PARSE_RESUME
                 )
                 payload = {
                     "candidateId": candidate.id,
-                    "recommendedJobs": recommended_jobs
+                    "recommendedJobs": final_recommendations
                 }
-                response = requests.post(callback_url, json=payload, timeout=3)
+                headers = {"Authorization": f"Bearer {authorization}"}
+
+                print("📡 Posting to:", callback_url)
+                print("📩 Headers:", headers)
+                print("📦 Payload:", payload)
+                response = requests.post(
+                    callback_url, json=payload, headers=headers, timeout=5)
+                print("✅ Callback status:", response.status_code)
+                print("🔎 Callback response:", response.text)
+
                 if response.status_code == 200:
-                    print(f"✅ Sent job recommendations to frontend for candidate {candidate.id}")
-            except requests.exceptions.ConnectionError:
-                print(f"ℹ️ Frontend not available - job recommendations processed successfully")
-            except requests.exceptions.Timeout:
-                print(f"⚠️ Frontend callback timeout - continuing without notification")
+                    print(
+                        f"✅ Sent job recommendations to frontend for candidate {candidate.id}")
+                    print("Using token:", authorization)
             except Exception as e:
-                print(f"⚠️ Frontend callback failed (non-critical): {str(e)[:100]}")
+                print(f"⚠️ Callback failed: {str(e)[:100]}")
 
     finally:
         db.close()
+
 
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
@@ -702,7 +745,8 @@ def verify_jwt_and_role(
     db: Session = Depends(get_db)
 ):
     if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
+        raise HTTPException(
+            status_code=401, detail="Authorization header missing")
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid token format")
@@ -720,11 +764,11 @@ def verify_jwt_and_role(
     user_id = payload.get("userId")
     if not user_id:
         raise HTTPException(status_code=401, detail="Token missing user_id")
-    
+
     role = payload.get("role")
     if role.upper() != "EMPLOYER":
-        raise HTTPException(status_code=403, detail="Only EMPLOYERs can enhance JD")
-
+        raise HTTPException(
+            status_code=403, detail="Only EMPLOYERs can enhance JD")
 
     # check DB for role
     user = db.query(User).filter(User.id == user_id).first()
@@ -733,7 +777,8 @@ def verify_jwt_and_role(
     print("verify jwt and role user role is ", user.role)
 
     if user.role.upper() != "EMPLOYER":
-        raise HTTPException(status_code=403, detail="Only EMPLOYERs can enhance JD")
+        raise HTTPException(
+            status_code=403, detail="Only EMPLOYERs can enhance JD")
 
     return user_id
 

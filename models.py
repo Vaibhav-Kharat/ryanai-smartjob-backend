@@ -63,6 +63,7 @@ class Job(Base):
     status = Column(Text, nullable=True)
     vacancies = Column(Integer, nullable=True)
     job_upsell = Column(Boolean, default=False)
+    slug=Column(Text, nullable=True)
 
     employer = relationship("EmployerProfile", backref="jobs")
     category = relationship("Category", backref="jobs")
