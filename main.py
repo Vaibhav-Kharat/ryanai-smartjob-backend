@@ -200,7 +200,8 @@ def process_resume(
     
 
     if "personalDetails" in parsed_data:
-        candidate.fullName = format_value(parsed_data["personalDetails"].get("fullName"))
+        if candidate.user:
+            candidate.user.fullName = format_value(parsed_data["personalDetails"].get("fullName"))
         candidate.phone = format_value(parsed_data["personalDetails"].get("phone"))
         candidate.currentLocation = format_value(parsed_data["personalDetails"].get("currentLocation"))
         candidate.nationality = format_value(parsed_data["personalDetails"].get("nationality"))
