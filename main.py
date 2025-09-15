@@ -137,21 +137,26 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
         raise HTTPException(
             status_code=400, detail="Employer ID missing in token")
 
-    # 2️⃣ Verify job belongs to this employer
+    # 2️⃣ Fetch employer from DB using profileId
+    employer = db.query(EmployerProfile).filter(
+        EmployerProfile.userId == employer_id
+    ).first()
+    if not employer:
+        raise HTTPException(status_code=404, detail="Employer not found")
+
+    # 3️⃣ Verify job belongs to this employer
     job = db.query(Job).filter(Job.id == jobId).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Ensure consistent type comparison (both as strings or both as integers)
-    if str(job.employerId) != str(employer_id):
-        raise HTTPException(
-            status_code=403, detail="This job does not belong to you")
+    if job.employerId != employer.id:
+        print(f"Job employerId: {job.employerId}, Employer DB ID: {employer.id}")
+        raise HTTPException(status_code=403, detail="This job does not belong to you")
 
-    # 3️⃣ Get recommended candidates
-    recommended_candidates = recommend_candidates_logic(jobId, employer_id, db)
+    # 4️⃣ Get recommended candidates
+    recommended_candidates = recommend_candidates_logic(jobId, employer.id, db)
     if not recommended_candidates:
-        raise HTTPException(
-            status_code=404, detail="No eligible candidates found")
+        raise HTTPException(status_code=404, detail="No eligible candidates found")
 
     return {
         "job_id": jobId,

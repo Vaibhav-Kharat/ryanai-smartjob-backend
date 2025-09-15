@@ -469,6 +469,27 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
 # -------------------------------------------------------------------------------#
 # down logic is for recommend candidates
 
+def safe_int_convert(value, default=0):
+    """Safely convert a value to integer, returning default if conversion fails"""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
+    """Calculate skill match percentage using fuzzy string matching"""
+    if not job_skills:
+        return 0
+
+    matches = 0
+    for js in job_skills:
+        for cs in candidate_skills:
+            if cs and js and fuzz.token_set_ratio(js.lower(), cs.lower()) >= threshold:
+                matches += 1
+                break
+    return (matches / len(job_skills)) * 100
+
 
 def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     # 1️⃣ Verify employer exists
@@ -581,28 +602,6 @@ def recommend_candidates_logic(job_id: str, employer_id: str, db: Session):
     recommended.sort(key=lambda x: (
         x["openToWork"], x["skillMatch"]), reverse=True)
     return recommended[:5]
-
-
-def safe_int_convert(value, default=0):
-    """Safely convert a value to integer, returning default if conversion fails"""
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
-
-
-def calculate_skill_match_fuzzy(job_skills, candidate_skills, threshold=70):
-    """Calculate skill match percentage using fuzzy string matching"""
-    if not job_skills:
-        return 0
-
-    matches = 0
-    for js in job_skills:
-        for cs in candidate_skills:
-            if cs and js and fuzz.token_set_ratio(js.lower(), cs.lower()) >= threshold:
-                matches += 1
-                break
-    return (matches / len(job_skills)) * 100
 
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
