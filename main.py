@@ -97,7 +97,7 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
     employer_user_id = payload.get("profileId")
     if not employer_user_id:
         raise HTTPException(
-            status_code=400, detail="candidate_id not found in token")
+            status_code=400, detail="candidate_id not found in token") 
 
     results = recommend_jobs_logic(employer_user_id, db)
     if not results:

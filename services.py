@@ -371,13 +371,15 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "location": job.location,
             "salaryMin": job.salaryMin,
             "salaryMax": job.salaryMax,
-            "employer": {"companyName": job.employer.companyName if job.employer else None},
+            "employer": {"companyName": job.employer.companyName if job.employer else None, "companyLogo": job.employer.companyLogo if job.employer else None, "id": job.employer.id if job.employer else None},
+            "employerId": job.employerId,
             "category": {"name": job.category.name if job.category else None},
             "skill_match_percentage": round(skill_match_pct),
             "experience_match_percentage": round(experience_match_pct),
             "aggregate_match_percentage": round(aggregate_pct),
             "match_reason": reason,
             "job_upsell": job.job_upsell
+
         })
 
     # Sort and return top 5

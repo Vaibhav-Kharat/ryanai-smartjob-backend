@@ -42,6 +42,8 @@ class EmployerProfile(Base):
     id = Column(Text, primary_key=True, index=True)
     companyName = Column(Text, nullable=False)
     userId = Column(Text, ForeignKey("User.id"), unique=True, nullable=False)
+    companyLogo= Column(Text, nullable=True)
+
 
     user = relationship("User", backref="employer_profile", uselist=False)
 
