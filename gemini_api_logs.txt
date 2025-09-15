@@ -3709,3 +3709,101 @@
     "timestamp": "2025-09-12T19:25:29.641953"
   }
 }
+2025-09-15 15:35:04,079 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T15:35:04.079254",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2609
+  },
+  "response": {
+    "tokens_used": 835,
+    "prompt_tokens": 636,
+    "candidates_tokens": 199,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T15:35:04.079232"
+  }
+}
+2025-09-15 15:35:53,599 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T15:35:53.599649",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2552
+  },
+  "response": {
+    "tokens_used": 861,
+    "prompt_tokens": 671,
+    "candidates_tokens": 190,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T15:35:53.599631"
+  }
+}
+2025-09-15 15:40:57,545 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T15:40:57.544775",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2586
+  },
+  "response": {
+    "tokens_used": 847,
+    "prompt_tokens": 650,
+    "candidates_tokens": 197,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T15:40:57.544710"
+  }
+}
+2025-09-15 15:54:39,530 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T15:54:39.530134",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2586
+  },
+  "response": {
+    "tokens_used": 847,
+    "prompt_tokens": 650,
+    "candidates_tokens": 197,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T15:54:39.530118"
+  }
+}
+2025-09-15 15:55:59,899 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T15:55:59.899077",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2552
+  },
+  "response": {
+    "tokens_used": 870,
+    "prompt_tokens": 671,
+    "candidates_tokens": 199,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T15:55:59.899058"
+  }
+}
+2025-09-15 16:01:35,930 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T16:01:35.930495",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2552
+  },
+  "response": {
+    "tokens_used": 870,
+    "prompt_tokens": 671,
+    "candidates_tokens": 199,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T16:01:35.930476"
+  }
+}
+2025-09-15 16:04:19,099 - GeminiAPILogger - INFO - {
+  "timestamp": "2025-09-15T16:04:19.099184",
+  "endpoint": "unified_resume_parser",
+  "request": {
+    "prompt_length": 2728
+  },
+  "response": {
+    "tokens_used": 911,
+    "prompt_tokens": 709,
+    "candidates_tokens": 202,
+    "model": "gemini-1.5-flash",
+    "timestamp": "2025-09-15T16:04:19.099170"
+  }
+}

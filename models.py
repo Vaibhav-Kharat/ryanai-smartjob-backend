@@ -68,6 +68,8 @@ class Job(Base):
     vacancies = Column(Integer, nullable=True)
     job_upsell = Column(Boolean, default=False)
     slug=Column(Text, nullable=True)
+    createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updatedAt = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),nullable=False)
 
     employer = relationship("EmployerProfile", backref="jobs")
     category = relationship("Category", backref="jobs")
@@ -123,3 +125,22 @@ class CandidateBookmark(Base):
     id = Column(Integer, primary_key=True, index=True)
     employerId = Column(Integer, ForeignKey("EmployerProfile.id"))
     candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
+
+
+class JobBookmark(Base):
+    __tablename__ = "JobBookmark"
+    id = Column(Integer, primary_key=True, index=True)
+    candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
+    jobId = Column(Text, ForeignKey("Job.id"))
+
+
+class Application(Base):
+    __tablename__ = "Application"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jobId= Column(Text, ForeignKey("Job.id"))
+    candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
+
+    job = relationship("Job", backref="applications")
+    candidate = relationship("CandidateProfile", backref="applications")
+

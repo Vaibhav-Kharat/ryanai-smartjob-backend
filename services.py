@@ -15,9 +15,10 @@ import google.generativeai as genai
 import spacy
 from fastapi import HTTPException, Depends, Header
 from jose import jwt, JWTError, ExpiredSignatureError
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
-from models import Job, CandidateProfile, EmployerProfile, Category, User, CandidateBookmark
+from models import Job, CandidateProfile, EmployerProfile, Category, User, CandidateBookmark, JobBookmark, Application
 from utils import extract_job_keywords, generate_match_reason, generate_text
 from db import SessionLocal, get_db
 from config import settings
@@ -365,21 +366,43 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         else:
             reason = f"Entry-level opportunity ({int(skill_match_pct)}% match) - great for career growth."
 
+        # --- NEW: Bookmark, Apply & Applications Count ---
+        isBookmarked = db.query(JobBookmark).filter_by(
+            candidateId=candidate_id, jobId=job.id
+        ).first() is not None
+
+        isApplied = db.query(Application).filter_by(
+            candidateId=candidate_id, jobId=job.id
+        ).first() is not None
+
+        applicationsCount = db.query(func.count(Application.id)).filter_by(
+            jobId=job.id
+        ).scalar()
+
         job_matches.append({
             "id": job.id,
             "title": job.title,
             "location": job.location,
             "salaryMin": job.salaryMin,
             "salaryMax": job.salaryMax,
-            "employer": {"companyName": job.employer.companyName if job.employer else None, "companyLogo": job.employer.companyLogo if job.employer else None, "id": job.employer.id if job.employer else None},
+            "employer": {
+                "companyName": job.employer.companyName if job.employer else None,
+                "companyLogo": job.employer.companyLogo if job.employer else None,
+                "id": job.employer.id if job.employer else None,
+            },
             "slug": job.slug,
+            "type": job.type,
+            "isBookmarked": isBookmarked,
+            "isApplied": isApplied,                       
+            "applicationsCount": applicationsCount,
+            "createdAt": job.createdAt.isoformat() if job.createdAt else None,
+            "updatedAt": job.updatedAt.isoformat() if job.updatedAt else None,
             "category": {"name": job.category.name if job.category else None},
             "skill_match_percentage": round(skill_match_pct),
             "experience_match_percentage": round(experience_match_pct),
             "aggregate_match_percentage": round(aggregate_pct),
             "match_reason": reason,
             "job_upsell": job.job_upsell
-
         })
 
     # Sort and return top 5
@@ -592,6 +615,7 @@ def unified_resume_parser(resume_text: str):
     }}
 
     Rules:
+    - Nationality must be according to the country name (e.g. If country name is India nationality will be  Indian, and if country name is Russia nationality will be Russian).
     - Do not include work experience descriptions, only extract "years".
     - For education: Degree → qualification, Major → fieldOfStudy, University → instituteName.
     - Languages must be plain text like {{English,Hindi,Marathi}}, no proficiency levels.

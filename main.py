@@ -197,6 +197,25 @@ def process_resume(
 
     # --- Save details (same as before) ---
     # ... your save logic ...
+    
+
+    if "personalDetails" in parsed_data:
+        candidate.fullName = format_value(parsed_data["personalDetails"].get("fullName"))
+        candidate.phone = format_value(parsed_data["personalDetails"].get("phone"))
+        candidate.currentLocation = format_value(parsed_data["personalDetails"].get("currentLocation"))
+        candidate.nationality = format_value(parsed_data["personalDetails"].get("nationality"))
+
+    if "education" in parsed_data:
+        candidate.education = parsed_data["education"]
+
+    if "languages" in parsed_data:
+        candidate.languagesKnown = parsed_data["languages"]
+
+    if "skills" in parsed_data:
+        candidate.keywords = {"skills": parsed_data["skills"]}
+
+    if "experience" in parsed_data:
+        candidate.experienceYears = format_value(parsed_data["experience"].get("years"))
 
     db.commit()
     db.refresh(candidate)
