@@ -212,11 +212,19 @@ def process_resume(
     if "languages" in parsed_data:
         candidate.languagesKnown = parsed_data["languages"]
 
+    # 🔹 Store skills + experience together inside keywords
+    keywords_data = {}
     if "skills" in parsed_data:
-        candidate.keywords = {"skills": parsed_data["skills"]}
+        keywords_data["skills"] = parsed_data["skills"]
 
+    if "experience" in parsed_data and parsed_data["experience"].get("years"):
+        keywords_data["experience"] = {"years": parsed_data["experience"].get("years")}
+
+    if keywords_data:
+        candidate.keywords = keywords_data
+    
     if "experience" in parsed_data:
-        candidate.experienceYears = format_value(parsed_data["experience"].get("years"))
+        candidate.totalExperience = int(re.sub(r'\D', '', parsed_data["experience"].get("years", "0")) or 0)
 
     db.commit()
     db.refresh(candidate)
@@ -230,6 +238,7 @@ def process_resume(
         "keywords": candidate.keywords,
         "personalDetails": parsed_data.get("personalDetails", {}),
         "languages": candidate.languagesKnown,
+        "education": candidate.education,
     }
 
 

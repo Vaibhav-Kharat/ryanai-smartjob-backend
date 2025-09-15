@@ -393,7 +393,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "slug": job.slug,
             "type": job.type,
             "isBookmarked": isBookmarked,
-            "isApplied": isApplied,                       
+            "isApplied": isApplied,
             "applicationsCount": applicationsCount,
             "createdAt": job.createdAt.isoformat() if job.createdAt else None,
             "updatedAt": job.updatedAt.isoformat() if job.updatedAt else None,
@@ -591,7 +591,21 @@ def extract_text_from_pdf(pdf_url: str) -> str:
 # --- Unified Gemini Parser ---
 def unified_resume_parser(resume_text: str):
     prompt = f"""
-    Extract all structured details from this resume and return JSON strictly in this format:
+    You are provided with a avaiation industry resume text. Your task is to extract and neatly compile the information into a precise JSON format, strictly adhering to the provided structure and rules.
+
+    Please follow these steps to complete the task:
+
+    Extract the personal details including full name, phone number, current location, and infer nationality from the country mentioned.
+    Extract structured education details related to the aviation industry from the resume text provided below. Follow these guidelines to ensure accurate data extraction:
+
+    Qualification: Identify the aviation-related degree, diploma, or certification mentioned (e.g., Bachelor of Aviation, Aeronautical Engineering, Pilot’s License).
+    Field of Study: Extract the specific area of study or specialization within aviation (e.g., Aerodynamics, Aviation Management, Air Traffic Control).
+    Institute Name: Find the name of the aviation school, college, or training institution where the qualification was obtained (e.g., Embry-Riddle Aeronautical University, FAA Academy).
+    Ensure that each educational entry is processed separately to accurately capture each detail.
+    Collect languages spoken, ensuring plain text format, separated by commas.
+    Compile a list of technical and professional skills from the resume.
+    Extract only the number of years of experience from the work history.
+    Ensure the JSON is valid and complete with no missing fields. Use the following template and replace placeholders with actual data extracted from the resume:
 
     {{
         "personalDetails": {{
@@ -607,7 +621,7 @@ def unified_resume_parser(resume_text: str):
                 "instituteName": "string"
             }}
         ],
-        "languages": "{{English,Hindi,Marathi}}",
+        "languages": ["English", "Hindi", "Marathi"],
         "skills": ["string"],
         "experience": {{
             "years": "string"
@@ -618,9 +632,15 @@ def unified_resume_parser(resume_text: str):
     - Nationality must be according to the country name (e.g. If country name is India nationality will be  Indian, and if country name is Russia nationality will be Russian).
     - Do not include work experience descriptions, only extract "years".
     - For education: Degree → qualification, Major → fieldOfStudy, University → instituteName.
-    - Languages must be plain text like {{English,Hindi,Marathi}}, no proficiency levels.
+    - Languages must be returned as a JSON array of strings, e.g. ["English", "Hindi", "Marathi"].
+    - Do not return as a single string or character-split values.
     - Skills must be a clean list of technical & professional keywords.
     - Strictly return valid JSON (no markdown, no explanations).
+    - Extract structured education details from the resume text provided below. Follow these instructions   carefully for precise data extraction:
+    Qualification: Identify the degree or diploma mentioned in the resume (e.g., Bachelor of Science, Master’s, Diploma).
+    Field of Study: Extract the main subject or major associated with the qualification (e.g., Computer Science, Business Administration, Electrical Engineering).
+    Institute Name: Find the name of the educational institution where the qualification was obtained (e.g., Harvard University, Oxford College).
+    Consider each educational entry separately and be thorough in capturing the necessary details for each.
 
     Resume:
     \"\"\"{resume_text}\"\"\"
