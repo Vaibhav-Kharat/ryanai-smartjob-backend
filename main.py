@@ -97,9 +97,10 @@ def get_recommend_jobs(Authorization: str = Header(...), db: Session = Depends(g
     employer_user_id = payload.get("profileId")
     if not employer_user_id:
         raise HTTPException(
-            status_code=400, detail="candidate_id not found in token") 
+            status_code=400, detail="candidate_id not found in token")
 
     results = recommend_jobs_logic(employer_user_id, db)
+    print(f"Recommended jobs for candidate {employer_user_id}: {results}")
     if not results:
         raise HTTPException(status_code=404, detail="No recommendations found")
 
@@ -197,18 +198,22 @@ def process_resume(
 
     # --- Save details (same as before) ---
     # ... your save logic ...
-    
 
     if "personalDetails" in parsed_data:
         if candidate.user:
-            candidate.user.fullName = format_value(parsed_data["personalDetails"].get("fullName"))
-        candidate.phone = format_value(parsed_data["personalDetails"].get("phone"))
-        candidate.currentLocation = format_value(parsed_data["personalDetails"].get("currentLocation"))
-        candidate.nationality = format_value(parsed_data["personalDetails"].get("nationality"))
+            candidate.user.fullName = format_value(
+                parsed_data["personalDetails"].get("fullName"))
+        candidate.phone = format_value(
+            parsed_data["personalDetails"].get("phone"))
+        candidate.currentLocation = format_value(
+            parsed_data["personalDetails"].get("currentLocation"))
+        candidate.nationality = format_value(
+            parsed_data["personalDetails"].get("nationality"))
 
     if "education" in parsed_data:
-    # optional: clear old records for candidate
-        db.query(Education).filter(Education.candidateId == candidate.id).delete()
+        # optional: clear old records for candidate
+        db.query(Education).filter(
+            Education.candidateId == candidate.id).delete()
 
         for edu in parsed_data["education"]:
             new_edu = Education(
@@ -229,13 +234,15 @@ def process_resume(
         keywords_data["skills"] = parsed_data["skills"]
 
     if "experience" in parsed_data and parsed_data["experience"].get("years"):
-        keywords_data["experience"] = {"years": parsed_data["experience"].get("years")}
+        keywords_data["experience"] = {
+            "years": parsed_data["experience"].get("years")}
 
     if keywords_data:
         candidate.keywords = keywords_data
-    
+
     if "experience" in parsed_data:
-        candidate.totalExperience = int(re.sub(r'\D', '', parsed_data["experience"].get("years", "0")) or 0)
+        candidate.totalExperience = int(
+            re.sub(r'\D', '', parsed_data["experience"].get("years", "0")) or 0)
 
     db.commit()
     db.refresh(candidate)

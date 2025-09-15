@@ -13,8 +13,10 @@ import httpx
 import traceback
 import google.generativeai as genai
 import spacy
+import jwt
 from fastapi import HTTPException, Depends, Header
 from jose import jwt, JWTError, ExpiredSignatureError
+from jwt import InvalidTokenError, ExpiredSignatureError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm import Session, joinedload
@@ -256,19 +258,52 @@ def decode_jwt_token_recommed_job(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except JWTError as e:
+        print(f"JWT decode failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def safe_int(value, default=0):
-    """Safely convert to int, return default if conversion fails."""
+def safe_int(val):
+    """Convert various inputs to int safely (returns 0 on failure)."""
+    if val is None:
+        return 0
+    if isinstance(val, int):
+        return val
     try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
+        # if string like "18" or "18 years" -> extract digits
+        s = str(val)
+        digits = re.sub(r"\D", "", s)
+        return int(digits) if digits else 0
+    except Exception:
+        return 0
 
+def normalize_skills(skills):
+    """
+    Ensure skills is a list -> return a normalized set (lowercased, stripped).
+    Accepts list, JSON string, or plain string.
+    """
+    if not skills:
+        return set()
+    # if skills is a JSON string, try to load it
+    if isinstance(skills, str):
+        try:
+            parsed = json.loads(skills)
+            skills = parsed
+        except Exception:
+            # treat single string as single-element list
+            skills = [skills]
+    # Now expect iterable of strings
+    normalized = set()
+    for s in (skills or []):
+        if not s:
+            continue
+        try:
+            normalized.add(str(s).strip().lower())
+        except Exception:
+            continue
+    return normalized
 
 def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
@@ -285,6 +320,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         except json.JSONDecodeError:
             candidate_keywords = {}
 
+    # candidate experience may be nested
     candidate_exp_dict = candidate_keywords.get("experience") or {}
     if isinstance(candidate_exp_dict, str):
         try:
@@ -292,8 +328,11 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         except json.JSONDecodeError:
             candidate_exp_dict = {}
 
-    candidate_skills = set(candidate_keywords.get("skills", []))
+    candidate_skills = normalize_skills(candidate_keywords.get("skills", []))
     candidate_exp = safe_int(candidate_exp_dict.get("years"))
+
+    # Debug: print candidate info
+    print(f"\n🔎 Candidate {candidate_id} skills: {candidate_skills}, experience: {candidate_exp}")
 
     # Optimized database query - load only needed fields and relationships
     # Filter out jobs without keywords and limit result size for faster processing
@@ -302,7 +341,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         joinedload(Job.category)
     ).filter(
         Job.keywords.isnot(None)
-    ).limit(100).all()  # Limit to 100 most recent jobs for faster processing
+    ).all()
 
     job_matches = []
 
@@ -313,6 +352,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             try:
                 job_keywords = json.loads(job_keywords)
             except json.JSONDecodeError:
+                print(f"⚠️ Skipping job {job.id} due to invalid keywords JSON")
                 continue  # Skip jobs with invalid keywords
 
         job_exp_dict = job_keywords.get("experience") or {}
@@ -322,12 +362,21 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             except json.JSONDecodeError:
                 job_exp_dict = {}
 
-        job_skills = set(job_keywords.get("skills", []))
+        job_skills = normalize_skills(job_keywords.get("skills", []))
         if not job_skills:  # Skip jobs with no skills
+            # Debug
+            print(f"❌ Skipped job {job.id} ({job.title}) — no job skills present")
             continue
 
         # Quick pre-filter: Skip jobs with zero skill overlap
-        if not candidate_skills.intersection(job_skills):
+        overlap = candidate_skills.intersection(job_skills)
+        # Debug
+        print(f"\n📌 Job {job.id} - {job.title}")
+        print(f"Job skills: {job_skills}")
+        print(f"Overlap with candidate: {overlap}")
+
+        if not overlap:
+            print(f"❌ Skipped job {job.id} — no matching skills")
             continue
 
         job_min_exp = safe_int(job_exp_dict.get("min_experience"))
@@ -335,12 +384,12 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
 
         # --- Skill Match ---
         skill_match_pct = (
-            (len(candidate_skills.intersection(job_skills)) / len(job_skills)) * 100
+            (len(overlap) / len(job_skills)) * 100
             if job_skills else 0
         )
 
         # --- Experience Match ---
-        if job_max_exp == 0:  # no exp specified
+        if job_max_exp == 0:
             experience_match_pct = 0
         else:
             if job_min_exp <= candidate_exp <= job_max_exp:
@@ -354,6 +403,9 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
 
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
 
+        # Debug: print computed percentages
+        print(f"Skill%: {skill_match_pct:.1f}, Exp%: {experience_match_pct:.1f}, Agg%: {aggregate_pct:.1f}")
+
         # Fast template-based match reason
         if skill_match_pct >= 80:
             reason = f"Excellent skill alignment ({int(skill_match_pct)}%) with strong experience match."
@@ -366,7 +418,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         else:
             reason = f"Entry-level opportunity ({int(skill_match_pct)}% match) - great for career growth."
 
-        # --- NEW: Bookmark, Apply & Applications Count ---
+        # --- Bookmark, Apply & Applications Count ---
         isBookmarked = db.query(JobBookmark).filter_by(
             candidateId=candidate_id, jobId=job.id
         ).first() is not None
@@ -405,7 +457,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "job_upsell": job.job_upsell
         })
 
-    # Sort and return top 5
+    # Sort and return top 5 (same as your original logic)
     job_matches.sort(
         key=lambda x: (-x["aggregate_match_percentage"], not x["job_upsell"])
     )
