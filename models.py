@@ -42,8 +42,7 @@ class EmployerProfile(Base):
     id = Column(Text, primary_key=True, index=True)
     companyName = Column(Text, nullable=False)
     userId = Column(Text, ForeignKey("User.id"), unique=True, nullable=False)
-    companyLogo= Column(Text, nullable=True)
-
+    companyLogo = Column(Text, nullable=True)
 
     user = relationship("User", backref="employer_profile", uselist=False)
 
@@ -67,9 +66,11 @@ class Job(Base):
     status = Column(Text, nullable=True)
     vacancies = Column(Integer, nullable=True)
     job_upsell = Column(Boolean, default=False)
-    slug=Column(Text, nullable=True)
-    createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updatedAt = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),nullable=False)
+    slug = Column(Text, nullable=True)
+    createdAt = Column(DateTime(timezone=True),
+                       server_default=func.now(), nullable=False)
+    updatedAt = Column(DateTime(timezone=True), server_default=func.now(
+    ), onupdate=func.now(), nullable=False)
 
     employer = relationship("EmployerProfile", backref="jobs")
     category = relationship("Category", backref="jobs")
@@ -114,8 +115,8 @@ class Education(Base):
     grade = Column(Text, nullable=True)
     createdAt = Column(DateTime(timezone=True),
                        server_default=func.now(), nullable=False)
-    updatedAt = Column(DateTime(timezone=True), server_default=func.now(
-    ), onupdate=func.now(), nullable=False)
+    updatedAt = Column(DateTime(timezone=True),
+                       server_default=func.now(), onupdate=func.now())
 
     candidate = relationship("CandidateProfile", backref="educations")
 
@@ -138,9 +139,8 @@ class Application(Base):
     __tablename__ = "Application"
 
     id = Column(Integer, primary_key=True, index=True)
-    jobId= Column(Text, ForeignKey("Job.id"))
+    jobId = Column(Text, ForeignKey("Job.id"))
     candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
 
     job = relationship("Job", backref="applications")
     candidate = relationship("CandidateProfile", backref="applications")
-

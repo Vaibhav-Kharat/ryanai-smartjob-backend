@@ -207,7 +207,18 @@ def process_resume(
         candidate.nationality = format_value(parsed_data["personalDetails"].get("nationality"))
 
     if "education" in parsed_data:
-        candidate.education = parsed_data["education"]
+    # optional: clear old records for candidate
+        db.query(Education).filter(Education.candidateId == candidate.id).delete()
+
+        for edu in parsed_data["education"]:
+            new_edu = Education(
+                candidateId=candidate.id,
+                qualification=edu.get("qualification"),
+                fieldOfStudy=edu.get("fieldOfStudy"),
+                instituteName=edu.get("instituteName"),
+                updatedAt=datetime.utcnow()
+            )
+            db.add(new_edu)   # Commit after adding all education entries
 
     if "languages" in parsed_data:
         candidate.languagesKnown = parsed_data["languages"]
@@ -238,7 +249,7 @@ def process_resume(
         "keywords": candidate.keywords,
         "personalDetails": parsed_data.get("personalDetails", {}),
         "languages": candidate.languagesKnown,
-        "education": candidate.education,
+        "education": parsed_data.get("education", []),
     }
 
 
