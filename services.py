@@ -332,7 +332,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate_exp = safe_int(candidate_exp_dict.get("years"))
 
     # Debug: print candidate info
-    print(f"\n🔎 Candidate {candidate_id} skills: {candidate_skills}, experience: {candidate_exp}")
+    # print(f"\n🔎 Candidate {candidate_id} skills: {candidate_skills}, experience: {candidate_exp}")
 
     # Optimized database query - load only needed fields and relationships
     # Filter out jobs without keywords and limit result size for faster processing
@@ -365,18 +365,18 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         job_skills = normalize_skills(job_keywords.get("skills", []))
         if not job_skills:  # Skip jobs with no skills
             # Debug
-            print(f"❌ Skipped job {job.id} ({job.title}) — no job skills present")
+            # print(f"❌ Skipped job {job.id} ({job.title}) — no job skills present")   
             continue
 
         # Quick pre-filter: Skip jobs with zero skill overlap
         overlap = candidate_skills.intersection(job_skills)
         # Debug
-        print(f"\n📌 Job {job.id} - {job.title}")
-        print(f"Job skills: {job_skills}")
-        print(f"Overlap with candidate: {overlap}")
+        # print(f"\n📌 Job {job.id} - {job.title}")
+        # print(f"Job skills: {job_skills}")
+        # print(f"Overlap with candidate: {overlap}")
 
         if not overlap:
-            print(f"❌ Skipped job {job.id} — no matching skills")
+            # print(f"❌ Skipped job {job.id} — no matching skills")
             continue
 
         job_min_exp = safe_int(job_exp_dict.get("min_experience"))
@@ -404,7 +404,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
 
         # Debug: print computed percentages
-        print(f"Skill%: {skill_match_pct:.1f}, Exp%: {experience_match_pct:.1f}, Agg%: {aggregate_pct:.1f}")
+        # print(f"Skill%: {skill_match_pct:.1f}, Exp%: {experience_match_pct:.1f}, Agg%: {aggregate_pct:.1f}")
 
         # Fast template-based match reason
         if skill_match_pct >= 80:
