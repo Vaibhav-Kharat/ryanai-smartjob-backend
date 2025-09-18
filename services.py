@@ -279,6 +279,7 @@ def safe_int(val):
     except Exception:
         return 0
 
+
 def normalize_skills(skills):
     """
     Ensure skills is a list -> return a normalized set (lowercased, stripped).
@@ -304,6 +305,7 @@ def normalize_skills(skills):
         except Exception:
             continue
     return normalized
+
 
 def recommend_jobs_logic(candidate_id: int, db: Session):
     candidate = db.query(CandidateProfile).filter(
@@ -365,7 +367,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         job_skills = normalize_skills(job_keywords.get("skills", []))
         if not job_skills:  # Skip jobs with no skills
             # Debug
-            # print(f"❌ Skipped job {job.id} ({job.title}) — no job skills present")   
+            # print(f"❌ Skipped job {job.id} ({job.title}) — no job skills present")
             continue
 
         # Quick pre-filter: Skip jobs with zero skill overlap
@@ -404,7 +406,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         aggregate_pct = (skill_match_pct + experience_match_pct) / 2
 
         # Debug: print computed percentages
-        # print(f"Skill%: {skill_match_pct:.1f}, Exp%: {experience_match_pct:.1f}, Agg%: {aggregate_pct:.1f}")
+        #   print(f"Skill%: {skill_match_pct:.1f}, Exp%: {experience_match_pct:.1f}, Agg%: {aggregate_pct:.1f}")
 
         # Fast template-based match reason
         if skill_match_pct >= 80:
@@ -424,8 +426,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         ).first() is not None
 
         isApplied = db.query(Application).filter_by(
-            candidateId=candidate_id, jobId=job.id
-        ).first() is not None
+            candidateId=candidate_id, jobId=job.id).first()
 
         applicationsCount = db.query(func.count(Application.id)).filter_by(
             jobId=job.id
@@ -445,7 +446,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
             "slug": job.slug,
             "type": job.type,
             "isBookmarked": isBookmarked,
-            "isApplied": isApplied,
+            "applicationStatus": isApplied.status if isApplied else None,
             "applicationsCount": applicationsCount,
             "createdAt": job.createdAt.isoformat() if job.createdAt else None,
             "updatedAt": job.updatedAt.isoformat() if job.updatedAt else None,
@@ -468,6 +469,7 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
 # -------------------------------------------------------------------------------#
 # -------------------------------------------------------------------------------#
 # down logic is for recommend candidates
+
 
 def safe_int_convert(value, default=0):
     """Safely convert a value to integer, returning default if conversion fails"""

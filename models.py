@@ -141,6 +141,7 @@ class Application(Base):
     id = Column(Integer, primary_key=True, index=True)
     jobId = Column(Text, ForeignKey("Job.id"))
     candidateId = Column(Integer, ForeignKey("CandidateProfile.id"))
+    status=Column(Text)
 
     job = relationship("Job", backref="applications")
     candidate = relationship("CandidateProfile", backref="applications")
