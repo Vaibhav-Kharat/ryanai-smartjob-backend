@@ -174,40 +174,44 @@ def extract_job_keywords(description: str):
 
 def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills):
     """
-    Updated function to match new signature and use AI for better explanations
-    """
-    prompt = f"""
-    Generate a concise job match explanation (20-25 words).
-    
-    Candidate: {candidate_exp} years experience, skills: {list(candidate_skills) if hasattr(candidate_skills, '__iter__') else candidate_skills}
-    Job: {job_min_exp}-{job_max_exp} years required, skills: {list(job_skills) if hasattr(job_skills, '__iter__') else job_skills}
-    
-    Explain why this is a good/poor match in 20-25 words.
+    Generate a concise job match reason (20–25 words) using AI only.
+    If AI fails, return a generic message instead of rule-based fallback.
     """
 
     try:
+        # Ensure lists are clean
+        candidate_skills = list(candidate_skills) if candidate_skills else []
+        job_skills = list(job_skills) if job_skills else []
+
+        prompt = f"""
+        You are a recruitment assistant.
+        
+        Candidate profile:
+        - Experience: {candidate_exp} years
+        - Skills: {', '.join(candidate_skills) if candidate_skills else 'None'}
+
+        Job requirements:
+        - Experience: {job_min_exp} to {job_max_exp if job_max_exp else '∞'} years
+        - Skills: {', '.join(job_skills) if job_skills else 'None'}
+
+        Task:
+        Write a clear and professional explanation in 20–25 words,
+        describing why this candidate is a strong or weak match for the job.
+        Focus on skills and experience.
+        """
+
         model_instance = genai.GenerativeModel("gemini-1.5-flash")
         response = model_instance.generate_content(
             prompt,
             generation_config=GenerationConfig(
                 max_output_tokens=80,
-                temperature=0.2
+                temperature=0.3
             )
         )
-        
-        # Log usage
-        usage_metadata = gemini_logger.extract_usage_metadata(response)
-        gemini_logger.log_api_call(
-            endpoint="generate_match_reason",
-            request_data={"prompt_length": len(prompt)},
-            response_data={
-                "usage_metadata": usage_metadata,
-                "model": "gemini-1.5-flash",
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-        
+
         return response.text.strip()
+
     except Exception as e:
         print(f"Error generating match reason: {e}")
-        return "AI-powered match analysis completed successfully."
+        return "AI-generated match reasoning unavailable. Please retry later."
+
