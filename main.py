@@ -126,7 +126,7 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        employer_id = str(payload.get("profileId"))
+        employer_id = payload.get("profileId")
         print(f"Decoded JWT payload: {payload}")  # For debugging
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -139,7 +139,7 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
 
     # 2️⃣ Fetch employer from DB using profileId
     employer = db.query(EmployerProfile).filter(
-        EmployerProfile.userId == employer_id
+        EmployerProfile.id == payload.get("profileId")
     ).first()
     if not employer:
         raise HTTPException(status_code=404, detail="Employer not found")
