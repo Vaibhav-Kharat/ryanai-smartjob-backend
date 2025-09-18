@@ -172,20 +172,19 @@ def extract_job_keywords(description: str):
 # this below is the function for why thsis job is a good match for the candidate it is implemented in recommedate job for candidate in services.py
 
 
-def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills):
+def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills,
+                          skills_percentage: float, experience_percentage: float, aggregate_percentage: float):
     """
-    Generate a concise job match reason (20–25 words) using AI only.
-    If AI fails, return a generic message instead of rule-based fallback.
+    Always generate a reason through AI, aligned with actual scores.
     """
 
     try:
-        # Ensure lists are clean
         candidate_skills = list(candidate_skills) if candidate_skills else []
         job_skills = list(job_skills) if job_skills else []
 
         prompt = f"""
-        You are a recruitment assistant.
-        
+        You are an AI recruitment assistant.
+
         Candidate profile:
         - Experience: {candidate_exp} years
         - Skills: {', '.join(candidate_skills) if candidate_skills else 'None'}
@@ -194,17 +193,23 @@ def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_
         - Experience: {job_min_exp} to {job_max_exp if job_max_exp else '∞'} years
         - Skills: {', '.join(job_skills) if job_skills else 'None'}
 
+        Match scores:
+        - Skills Match: {skills_percentage}%
+        - Experience Match: {experience_percentage}%
+        - Overall Match: {aggregate_percentage}%
+
         Task:
-        Write a clear and professional explanation in 20–25 words,
-        describing why this candidate is a strong or weak match for the job.
-        Focus on skills and experience.
+        Write a clear 20–25 word explanation.
+        If scores are very low (<30%), explain why this is a poor match.
+        If scores are high (>70%), explain why this is a strong match.
+        Be consistent with the scores, don’t contradict them.
         """
 
         model_instance = genai.GenerativeModel("gemini-1.5-flash")
         response = model_instance.generate_content(
             prompt,
             generation_config=GenerationConfig(
-                max_output_tokens=80,
+                max_output_tokens=100,
                 temperature=0.3
             )
         )
@@ -214,4 +219,3 @@ def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_
     except Exception as e:
         print(f"Error generating match reason: {e}")
         return "AI-generated match reasoning unavailable. Please retry later."
-
