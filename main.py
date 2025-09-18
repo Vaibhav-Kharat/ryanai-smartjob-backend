@@ -308,8 +308,7 @@ PROMPT_TEMPLATE = """
   </instructions>
 
   <restrictions>
-    - Only generate content if <raw_text> contains aviation or aerospace-related keywords 
-      (e.g., aircraft, avionics, UAV, drone, pilot, aerospace, flight, maintenance).  
+    - Only generate content if <raw_text> contains aviation or aerospace-related keywords
     - If <raw_text> does not contain these, return exactly:  
       Cannot generate job description. Enter a valid aviation-related text.
   </restrictions>
