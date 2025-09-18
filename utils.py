@@ -173,7 +173,7 @@ def extract_job_keywords(description: str):
 
 
 def generate_match_reason(candidate_exp, candidate_skills, job_min_exp, job_max_exp, job_skills,
-                          skills_percentage: float, experience_percentage: float, aggregate_percentage: float):
+                          skills_percentage, experience_percentage, aggregate_percentage):
     """
     Always generate a reason through AI, aligned with actual scores.
     """

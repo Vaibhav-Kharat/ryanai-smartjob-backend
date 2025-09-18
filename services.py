@@ -889,19 +889,16 @@ def verify_jwt_and_role(
 
 def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidate_experience: int):
     # --- Skills matching ---
-    candidate_skills = set(
-        map(str.lower, candidate_keywords.get("skills", [])))
+    candidate_skills = set(map(str.lower, candidate_keywords.get("skills", [])))
     job_skills = set(map(str.lower, job_keywords.get("skills", [])))
 
     matched_skills = candidate_skills.intersection(job_skills)
-    skills_percentage = (len(matched_skills) /
-                         len(job_skills)) * 100 if job_skills else 0
+    skills_percentage = (len(matched_skills) / len(job_skills)) * 100 if job_skills else 0
 
     # --- Experience matching ---
     exp_match = 0
     job_exp = job_keywords.get("experience", {})
-    job_min_exp = 0
-    job_max_exp = 0
+    job_min_exp, job_max_exp = 0, 0
 
     if isinstance(job_exp, dict):
         job_required = job_exp.get("years") or job_exp.get("min_experience")
@@ -910,15 +907,22 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
         if job_required:
             job_required_num = extract_numeric_experience(str(job_required))
             if candidate_experience and job_required_num:
-                exp_match = min(candidate_experience /
-                                job_required_num, 1.0) * 100
+                exp_match = min(candidate_experience / job_required_num, 1.0) * 100
 
     # --- Aggregate ---
     aggregate = (skills_percentage + exp_match) / 2
 
-    # --- Match reason (AI-generated with correct parameters) ---
+    # --- Match reason ---
     match_reason = generate_match_reason(
-        candidate_experience, candidate_skills, job_min_exp, job_max_exp, job_skills)
+        candidate_experience,
+        candidate_skills,
+        job_min_exp,
+        job_max_exp,
+        job_skills,
+        skills_percentage,
+        exp_match,
+        aggregate
+    )
 
     return {
         "skill_match_percentage": round(skills_percentage, 2),
@@ -926,6 +930,7 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
         "aggregate_match_percentage": round(aggregate, 2),
         "match_reason": match_reason
     }
+
 
 
 def extract_numeric_experience(exp_str: str) -> int:
