@@ -139,7 +139,7 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
 
     # 2️⃣ Fetch employer from DB using profileId
     employer = db.query(EmployerProfile).filter(
-        EmployerProfile.id == payload.get("profileId")
+        EmployerProfile.id == payload.get("profileId")#
     ).first()
     if not employer:
         raise HTTPException(status_code=404, detail="Employer not found")
@@ -288,77 +288,53 @@ class RawJobDescription(BaseModel):
 # --- Updated Prompt Template ---
 # The prompt is now adjusted to work from a single block of text.
 PROMPT_TEMPLATE = """
-    <role>
-    You are a strategic talent attraction specialist and expert copywriter for the aviation and aerospace technology sector. 
-    Your writing is clear, concise, and compelling, designed to attract the most innovative and dedicated professionals in the field. 
-    Your goal is not just to list duties, but to sell the role, the team, and the company's vision.
+  <role>
+    You are a strategic talent attraction specialist and expert copywriter 
+    for the aviation and aerospace technology sector. 
+    Your writing is clear, concise, and compelling, designed to attract 
+    the most innovative and dedicated professionals in the field. 
+    Your goal is not just to list duties, but to sell the role, 
+    the team, and the company's vision.
   </role>
 
-  <company_information>
-    <company_name>AeroInnovate Solutions</company_name>
-    <company_mission>To revolutionize aerial logistics with autonomous drone technology.</company_mission>
-    <company_culture>Pioneering, Collaborative, Safety-First, Fast-Paced</company_culture>
-  </company_information>
-
   <instructions>
-    1. Carefully analyze the raw text to extract the core elements of the job.  
-    2. Follow the structure, tone, and quality demonstrated in the Gold-Standard Example below.  
-    3. Write a powerful opening summary that connects the candidate's potential contribution to the company's ambitious mission.  
-    4. Rephrase responsibilities and qualifications using dynamic, active language.  
-    5. Create a 'Why Join AeroInnovate Solutions?' section that highlights the unique value proposition of working at the company.  
-    6. Conclude with a clear and direct 'Ready to Apply?' call to action.  
-    7. Format the entire output in clean Markdown.  
+    1. Analyze the <raw_text> carefully to extract the role’s core responsibilities, requirements, and impact.  
+    2. Write a powerful opening summary that connects the candidate’s potential contribution to the company’s ambitious mission in aviation/aerospace.  
+    3. Rephrase responsibilities and qualifications into dynamic, active language.  
+    4. Highlight the impact of the role on innovation, safety, and performance in aviation/aerospace.  
+    5. Add a <why_join_us> section emphasizing growth, pioneering work, and culture (no static company name).  
+    6. Conclude with a clear <call_to_action> encouraging applications.  
+    7. Format the final job description in clean Markdown.  
   </instructions>
 
   <restrictions>
-    - Only produce aviation or aerospace-related job descriptions.  
-    - Do not generate content outside of the aviation/aerospace industry.  
-    - Do not fabricate roles if raw text is unrelated.  
-    - Do not include unrelated discussions, opinions, or off-topic responses.  
+    - Only generate content if <raw_text> contains aviation or aerospace-related keywords 
+      (e.g., aircraft, avionics, UAV, drone, pilot, aerospace, flight, maintenance).  
+    - If <raw_text> does not contain these, return exactly:  
+      Cannot generate job description. Enter a valid aviation-related text.
   </restrictions>
 
-  <validation>
-    If <raw_text> does not contain aviation, aerospace, UAV, avionics, pilot, flight, drone, aircraft, or other aviation-related keywords,  
-    return exactly this plain text message (with no code blocks, no JSON, no formatting):
+  <structure>
+    <job_title>[Extracted Job Title]</job_title>  
+    <opening_summary>[Inspirational mission-driven introduction]</opening_summary>  
+    <about_role>[Clear description of role impact and purpose]</about_role>  
+    <responsibilities>[Bullet point list of what the candidate will do]</responsibilities>  
+    <qualifications>[Bullet point list of required skills/experience]</qualifications>  
+    <why_join_us>[Key reasons to join: growth, innovation, culture]</why_join_us>  
+    <call_to_action>[Direct, compelling application invitation]</call_to_action>  
+  </structure>
 
+  <validation>
+    If <raw_text> does not contain relevant aviation/aerospace terms, 
+    output only this plain text (with no formatting or extra text):  
     Cannot generate job description. Enter a valid aviation-related text.
   </validation>
 
-
   <general_discussion>
-    Apart from processing job descriptions as per the above prompt, 
-    you must not engage in any kind of other discussion.  
+    Apart from processing aviation/aerospace job descriptions, 
+    you must not engage in unrelated discussions.  
   </general_discussion>
 
-  <gold_standard_example>
-    ### Avionics Technician at AeroInnovate Solutions
-
-    Are you ready to be at the forefront of the autonomous aviation revolution? At AeroInnovate Solutions, we are building the future of logistics, and we are looking for a pioneering Avionics Technician to join our fast-paced team. This isn’t just a job; it’s an opportunity to make a tangible impact on a world-changing technology.
-
-    **About The Role**  
-    As our Avionics Technician, you will be the hands-on expert ensuring the reliability and safety of our cutting-edge autonomous drone fleet. You will play a critical role in our mission by maintaining, troubleshooting, and upgrading the very systems that make our vision a reality.
-
-    **What You’ll Do**  
-    * Perform comprehensive testing and diagnostics on all avionics systems, including navigation, communication, and control circuits.  
-    * Execute precision installation and integration of new hardware and firmware updates.  
-    * Collaborate closely with our engineering team to provide feedback and drive continuous improvement.  
-    * Maintain meticulous documentation of all maintenance actions in compliance with our safety-first protocols.  
-
-    **What You’ll Bring**  
-    * A&P License or equivalent certification in electronics/avionics.  
-    * A minimum of 3 years of hands-on experience with complex avionics systems.  
-    * Proven ability to read and interpret schematics and technical manuals.  
-    * A collaborative spirit and a passion for solving complex problems.  
-    * Experience with UAVs or drones is highly desirable.  
-
-    **Why Join AeroInnovate Solutions?**  
-    * **Be a Pioneer:** Work on technology that is actively shaping the future of an entire industry.  
-    * **Grow With Us:** We invest in our people with continuous training and clear paths for career advancement.  
-    * **Collaborative Culture:** Join a team of brilliant, dedicated professionals who are passionate about our shared mission.  
-
-    **Ready to Apply?**  
-    If you are driven by innovation and committed to excellence, we want to hear from you. Apply now to help us build the future, today.  
-  </gold_standard_example>
 ---
 
 **Raw Text to Process:**
