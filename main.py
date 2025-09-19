@@ -139,7 +139,7 @@ def recommend_candidates(jobId: str, request: Request, db: Session = Depends(get
 
     # 2️⃣ Fetch employer from DB using profileId
     employer = db.query(EmployerProfile).filter(
-        EmployerProfile.id == payload.get("profileId")#
+        EmployerProfile.id == payload.get("profileId")
     ).first()
     if not employer:
         raise HTTPException(status_code=404, detail="Employer not found")
@@ -320,18 +320,19 @@ PROMPT_TEMPLATE = """
   - If <raw_text> is unrelated to aviation/aerospace, return this exact plain text 
     (with no formatting or extras):  
     Cannot generate job description. Enter a valid aviation-related text.  
-</restrictions>
+  </restrictions>
 
 
   <structure>
-    <job_title>[Extracted Job Title]</job_title>  
-    <opening_summary>[Inspirational, mission-driven introduction]</opening_summary>  
-    <about_role>[Concise explanation of the role’s purpose and impact]</about_role>  
-    <responsibilities>[Dynamic bullet-point list of key responsibilities]</responsibilities>  
-    <qualifications>[Bullet-point list of required skills, certifications, or experience]</qualifications>  
-    <why_join_us>[Unique value proposition for candidates: growth, innovation, culture]</why_join_us>  
-    <call_to_action>[Direct, motivating application invitation]</call_to_action>  
+  - Job Title → Render as a level 3 Markdown heading (###)  
+  - Opening Summary → Plain paragraph text immediately after title  
+  - About The Role → Subheading (**About The Role**) followed by paragraph  
+  - Responsibilities → Subheading (**What You’ll Do**) with bullet points  
+  - Qualifications → Subheading (**What You’ll Bring**) with bullet points  
+  - Why Join Us → Subheading (**Why Join Us?**) followed by bullet points or short paragraph  
+  - Call to Action → Subheading (**Ready to Apply?**) with direct invitation 
   </structure>
+
 
   <validation>
     If <raw_text> does not include aviation/aerospace terms, 
