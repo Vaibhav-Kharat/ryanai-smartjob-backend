@@ -342,7 +342,8 @@ def recommend_jobs_logic(candidate_id: int, db: Session):
         joinedload(Job.employer),
         joinedload(Job.category)
     ).filter(
-        Job.keywords.isnot(None)
+        Job.keywords.isnot(None),
+        Job.status == "ACTIVE"
     ).all()
 
     job_matches = []
