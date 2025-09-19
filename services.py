@@ -85,7 +85,8 @@ def decode_jwt_token_job(token: str):
 async def recommend_candidates_for_job(job_id: str, authorization: str):
     db = SessionLocal()
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(Job).filter(Job.id == job_id,
+                                   Job.status == "ACTIVE").first()
         if not job or not job.keywords:
             return
 
@@ -890,11 +891,13 @@ def verify_jwt_and_role(
 
 def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidate_experience: int):
     # --- Skills matching ---
-    candidate_skills = set(map(str.lower, candidate_keywords.get("skills", [])))
+    candidate_skills = set(
+        map(str.lower, candidate_keywords.get("skills", [])))
     job_skills = set(map(str.lower, job_keywords.get("skills", [])))
 
     matched_skills = candidate_skills.intersection(job_skills)
-    skills_percentage = (len(matched_skills) / len(job_skills)) * 100 if job_skills else 0
+    skills_percentage = (len(matched_skills) /
+                         len(job_skills)) * 100 if job_skills else 0
 
     # --- Experience matching ---
     exp_match = 0
@@ -908,7 +911,8 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
         if job_required:
             job_required_num = extract_numeric_experience(str(job_required))
             if candidate_experience and job_required_num:
-                exp_match = min(candidate_experience / job_required_num, 1.0) * 100
+                exp_match = min(candidate_experience /
+                                job_required_num, 1.0) * 100
 
     # --- Aggregate ---
     aggregate = (skills_percentage + exp_match) / 2
@@ -931,7 +935,6 @@ def calculate_match_score(candidate_keywords: dict, job_keywords: dict, candidat
         "aggregate_match_percentage": round(aggregate, 2),
         "match_reason": match_reason
     }
-
 
 
 def extract_numeric_experience(exp_str: str) -> int:
